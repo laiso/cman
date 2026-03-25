@@ -110,7 +110,10 @@ def main():
         cwd_display = r["cwd"].replace(home, "~") if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
         print(f"[{i}] {cwd_display}")
         if r["cwd"]:
-            print(f"    cd {cwd_display} && claude --resume {r['session_id']}")
+            import shlex
+            needs_quote = "~" not in cwd_display
+            quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
+            print(f"    cd {quoted_cwd} && claude --resume {r['session_id']}")
         else:
             print(f"    claude --resume {r['session_id']}")
         for role, snippet in r["matches"]:

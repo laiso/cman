@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import shlex
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -138,7 +139,12 @@ def main():
             print(f"[{i}] {s['title']}")
             print(f"    {s['relative_time']} · {s['size']}")
             if s["cwd"]:
-                print(f"    cd {s['cwd']} && claude --resume {s['session_id']}")
+                cwd = s["cwd"]
+                home = str(Path.home())
+                display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
+                needs_quote = "~" not in display_cwd
+                quoted_cwd = shlex.quote(display_cwd) if needs_quote else display_cwd
+                print(f"    cd {quoted_cwd} && claude --resume {s['session_id']}")
             else:
                 print(f"    claude --resume {s['session_id']}")
             print()
