@@ -27,8 +27,8 @@ You can also use skills directly:
 
 | Skill | Scope | Purpose |
 |-------|-------|---------|
-| `/cman:search` | All projects | Search and summarize past sessions by keyword or time |
-| `/cman:status` | Current project | Quick overview of plans, sessions, and memory (`all` for everything) |
+| `/cman:cm-search` | All projects | Search and summarize past sessions by keyword or time |
+| `/cman:cm-status` | Current project | Quick overview of plans, sessions, and memory (`all` for everything) |
 
 ## Example output
 
@@ -80,7 +80,7 @@ You can also use skills directly:
 
 </details>
 
-### /cman:status
+### /cman:cm-status
 
 <details>
 <summary>Show example</summary>
@@ -125,10 +125,10 @@ Memory Overview
 ```
 Natural language          Skills (UX)              Scripts (data)
                     ┌─────────────────┐      ┌────────────────┐
-"What did I do      │ search          │─────▶│ sessions.py │
+"What did I do      │ cm-search       │─────▶│ sessions.py │
  yesterday?"     ──▶│ (auto-trigger)  │─────▶│ plans.py    │
                     ├─────────────────┤─────▶│ memory.py   │
-/cman:status     ──▶│ status          │─────▶│ grep.py     │
+/cman:cm-status  ──▶│ cm-status       │─────▶│ grep.py     │
                     └─────────────────┘      └─────────────┘
 ```
 
