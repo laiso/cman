@@ -2,7 +2,7 @@
 name: status
 description: Show current Claude Code activity. By default shows current project only. Use "all" to see all projects.
 argument-hint: [all]
-allowed-tools: Bash
+allowed-tools:
 disable-model-invocation: true
 ---
 
