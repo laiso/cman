@@ -1,7 +1,7 @@
 ---
 name: search
 description: Search and summarize past Claude Code work across all projects. Use when the user asks about past sessions, what they worked on yesterday or last week, where they left off, or is looking for a specific past conversation by keyword. Also handles daily/weekly recaps and standup summaries.
-allowed-tools: Bash
+allowed-tools: Bash(python3 *)
 ---
 
 # Search
