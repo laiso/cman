@@ -98,7 +98,7 @@ def list_sessions(project_dir: Path = None, limit: int = 50):
     sessions = []
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_file = {
-            executor.submit(process_session, f): f for f in jsonl_files[: limit * 2]
+            executor.submit(process_session, f): f for f in jsonl_files
         }
         for future in as_completed(future_to_file):
             try:

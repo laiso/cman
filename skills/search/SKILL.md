@@ -11,7 +11,7 @@ Search and summarize past Claude Code sessions, plans, and memory across all pro
 ## Data
 
 ### Sessions
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py -n 100`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py -n 200`
 
 ### Plans
 !`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plans.py`
