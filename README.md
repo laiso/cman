@@ -99,13 +99,13 @@ Active Plans
 └───┴──────────────────────────────────────────┴──────────┴─────────┘
 
 Recent Sessions
-┌───┬─────────────────────────┬─────────┬────────────────┬─────────────────────────────┐
-│ # │ Title                   │ Project │ When           │ Resume                      │
-├───┼─────────────────────────┼─────────┼────────────────┼─────────────────────────────┤
-│ 1 │ README editing          │ web-app │ 10 seconds ago │ claude --resume a1b2c3d4... │
-│ 2 │ Status skill testing    │ web-app │ 1 minutes ago  │ claude --resume e5f6g7h8... │
-│ 3 │ Search skill testing    │ web-app │ 3 minutes ago  │ claude --resume i9j0k1l2... │
-└───┴─────────────────────────┴─────────┴────────────────┴─────────────────────────────┘
+┌───┬─────────────────────────┬─────────┬────────────────┬──────────────────────────────────────────────────┬─────────────────────────────┐
+│ # │ Title                   │ Project │ When           │ CLI Resume                                       │ Interactive                 │
+├───┼─────────────────────────┼─────────┼────────────────┼──────────────────────────────────────────────────┼─────────────────────────────┤
+│ 1 │ README editing          │ web-app │ 10 seconds ago │ cd ~/work/web-app && claude --resume a1b2c3d4... │ /resume a1b2c3d4...         │
+│ 2 │ Status skill testing    │ web-app │ 1 minutes ago  │ cd ~/work/web-app && claude --resume e5f6g7h8... │ /resume e5f6g7h8...         │
+│ 3 │ Search skill testing    │ web-app │ 3 minutes ago  │ cd ~/work/web-app && claude --resume i9j0k1l2... │ /resume i9j0k1l2...         │
+└───┴─────────────────────────┴─────────┴────────────────┴──────────────────────────────────────────────────┴─────────────────────────────┘
 
 Memory Overview
 - web-app: 3 files

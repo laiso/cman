@@ -86,7 +86,7 @@ def process_session(f: Path) -> dict:
     }
 
 
-def list_sessions(project_dir: Path = None, limit: int = 50):
+def list_sessions(project_dir: Path = None, limit: int = 50, exclude_subagents: bool = False):
     if project_dir is None:
         project_dir = Path.home() / ".claude" / "projects"
 
@@ -94,6 +94,8 @@ def list_sessions(project_dir: Path = None, limit: int = 50):
         raise FileNotFoundError(f"Projects directory not found: {project_dir}")
 
     jsonl_files = list(project_dir.rglob("*.jsonl"))
+    if exclude_subagents:
+        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
     jsonl_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
 
     sessions = []
@@ -120,12 +122,15 @@ def main():
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="Show only session IDs"
     )
+    parser.add_argument(
+        "--exclude-subagents", action="store_true", help="Exclude subagent sessions (agent-* prefix)"
+    )
     args = parser.parse_args()
 
     project_dir = Path(args.path) if args.path else None
 
     try:
-        sessions = list_sessions(project_dir, args.limit)
+        sessions = list_sessions(project_dir, args.limit, exclude_subagents=args.exclude_subagents)
 
         if args.quiet:
             for s in sessions:
