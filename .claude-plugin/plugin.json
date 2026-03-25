@@ -1,0 +1,7 @@
+{
+  "name": "cman",
+  "description": "Browse, search, and summarize Claude Code sessions, plans, and memory across projects",
+  "author": {
+    "name": "laiso"
+  }
+}

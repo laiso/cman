@@ -1,0 +1,17 @@
+{
+  "name": "cman",
+  "owner": {
+    "name": "laiso"
+  },
+  "metadata": {
+    "description": "Browse, search, and summarize Claude Code sessions, plans, and memory across projects",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "cman",
+      "description": "Session manager with dashboard, recap, search, and memory audit",
+      "source": "./"
+    }
+  ]
+}
