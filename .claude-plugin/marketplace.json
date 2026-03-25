@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Browse, search, and summarize Claude Code sessions, plans, and memory across projects",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
