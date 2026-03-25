@@ -58,5 +58,5 @@ Filter plans, sessions, and memory by matching the project/cwd path.
 - For the "Project" column, extract the last directory component from the `cd` path.
 - If there are no active plans, say "No active plans" instead of an empty table.
 - ALWAYS include the session ID in the Resume column. The session ID is shown in the data (e.g., `claude --resume 7bb6cc10-aa5f-427e-a257-6ae1176748dd`). Never omit it.
-- For the Title column, rephrase raw prompts into brief work descriptions (e.g., "@README.md" → "README editing", "cman:history" → "History skill testing").
+- For the Title column, rephrase raw prompts into brief work descriptions (e.g., "@README.md" → "README editing", "cman:search test" → "Search testing").
 - For Memory Overview, always include the full file path (e.g., `~/.claude/projects/-Users-.../memory/filename.md`) for each file listed in the data.
