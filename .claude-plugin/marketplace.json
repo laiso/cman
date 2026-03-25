@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "cman",
-      "description": "Session manager with dashboard, recap, search, and memory audit",
+      "description": "Agentic memory — search and summarize past sessions, plans, and memory across projects",
       "source": "./"
     }
   ]

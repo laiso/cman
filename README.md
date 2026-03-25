@@ -1,76 +1,146 @@
-# cman — Claude Code Session Manager Plugin
+# cman — Agentic Memory for Claude Code
 
-Browse, search, and summarize Claude Code sessions, plans, and memory across projects.
+Your memory is already there. cman just searches it agentically.
 
-## Requirements
-
-- Python 3 (standard library only, no pip install needed)
+No external database, no API keys, no extra storage. cman gives Claude search over your existing sessions, plans, and memory files — and lets it summarize what matters.
 
 ## Installation
 
 ```bash
-# Local testing
-claude --plugin-dir /path/to/cman
-
-# Or install as a plugin
-claude plugin add /path/to/cman
+/plugin marketplace add laiso/cman
+/plugin install cman@cman
 ```
 
-## Skills
+## How it works
 
-### /cman:dash — Dashboard
-
-Quick overview of current activity: active plans, recent sessions, memory status.
+Just ask Claude naturally:
 
 ```
-/cman:dash
+> What did I do yesterday?
+> What did I work on last week?
+> Where was that auth-related work?
 ```
 
-### /cman:recap — Work Recap
+Claude automatically searches your sessions, plans, and memory files — then summarizes the results.
 
-Summarize what you've been working on. Useful for standups and daily review.
+You can also use skills directly:
 
-```
-/cman:recap           # Past 24 hours (default)
-/cman:recap weekly    # Past 7 days
-```
+| Skill | Scope | Purpose |
+|-------|-------|---------|
+| `/cman:search` | All projects | Search and summarize past sessions by keyword or time |
+| `/cman:status` | Current project | Quick overview of plans, sessions, and memory (`all` for everything) |
 
-### /cman:find — Cross-Search
+## Example output
 
-Search across sessions, plans, and memory by keyword.
+### "What did I do yesterday?"
 
-```
-/cman:find auth       # Find sessions/plans/memory mentioning "auth"
-/cman:find migration  # Find work related to migrations
-```
-
-### /cman:audit — Memory Audit
-
-Analyze memory files for staleness, duplicates, bloat, and conflicts.
+<details>
+<summary>Show example</summary>
 
 ```
-/cman:audit           # Audit all memory files
-/cman:audit project   # Audit only project-scoped memory
+## Work Recap — Past 24 hours
+
+### Completed
+- **web-app**: User dashboard chart component
+- **web-app**: Fixed pagination bug on /users endpoint
+- **web-app**: PR review (add rate limiter, update deps)
+- **infra**: Cluster upgrade plan drafted
+- **mobile-app**: Build config cleanup
+
+### In Progress
+- **web-app**: CSV export feature — `claude --resume a2ac93f1...`
+- **infra**: Cost analysis — `claude --resume 06365b61...`
+
+### Stats
+- 50 sessions across 4 projects
 ```
+
+</details>
+
+### "Where was that auth work?"
+
+<details>
+<summary>Show example</summary>
+
+```
+## Search Results for "auth"
+
+### Plans
+- [Kubernetes cluster upgrade] — 3 sessions
+  (Contains service account and auth configuration)
+
+### Memory
+- [web-app] project_oauth_migration.md
+  OAuth2 migration — moving from session-based auth to JWT tokens
+
+### Conversation matches (deep search)
+- [web-app] Permission settings investigation — 5 days ago
+  `claude --resume a82548ab...`
+```
+
+</details>
+
+### /cman:status
+
+<details>
+<summary>Show example</summary>
+
+```
+Status
+
+Active Plans
+┌───┬──────────────────────────────────────────┬──────────┬─────────┐
+│ # │ Plan                                     │ Sessions │ Project │
+├───┼──────────────────────────────────────────┼──────────┼─────────┤
+│ 1 │ feat: Add user dashboard with charts     │ 12       │ web-app │
+│ 2 │ CSV export → Google Sheets integration   │ 16       │ web-app │
+│ 3 │ Kubernetes cluster upgrade               │ 3        │ infra   │
+│ 4 │ Frontend i18n support                    │ 11       │ web-app │
+└───┴──────────────────────────────────────────┴──────────┴─────────┘
+
+Recent Sessions
+┌───┬─────────────────────────┬─────────┬────────────────┬─────────────────────────────┐
+│ # │ Title                   │ Project │ When           │ Resume                      │
+├───┼─────────────────────────┼─────────┼────────────────┼─────────────────────────────┤
+│ 1 │ README editing          │ web-app │ 10 seconds ago │ claude --resume a1b2c3d4... │
+│ 2 │ Status skill testing    │ web-app │ 1 minutes ago  │ claude --resume e5f6g7h8... │
+│ 3 │ Search skill testing    │ web-app │ 3 minutes ago  │ claude --resume i9j0k1l2... │
+└───┴─────────────────────────┴─────────┴────────────────┴─────────────────────────────┘
+
+Memory Overview
+- web-app: 3 files
+  - ~/.claude/projects/.../web-app/memory/MEMORY.md
+  - ~/.claude/projects/.../web-app/memory/project_design.md
+  - ~/.claude/projects/.../web-app/memory/feedback_conventions.md
+```
+
+</details>
+
+## Requirements
+
+- Python 3 (standard library only)
 
 ## Architecture
 
 ```
-Skills (UX layer)          Scripts (data layer)
-┌────────────────┐         ┌────────────────┐
-│ recap          │────────▶│ cc-sessions.py │
-│ find           │────────▶│ cc-plans.py    │
-│ dash           │────────▶│ cc-memory.py   │
-│ audit          │────────▶│                │
-└────────────────┘         └────────────────┘
+Natural language          Skills (UX)              Scripts (data)
+                    ┌─────────────────┐      ┌────────────────┐
+"What did I do      │ search          │─────▶│ sessions.py │
+ yesterday?"     ──▶│ (auto-trigger)  │─────▶│ plans.py    │
+                    ├─────────────────┤─────▶│ memory.py   │
+/cman:status     ──▶│ status          │─────▶│ grep.py     │
+                    └─────────────────┘      └─────────────┘
 ```
 
 Skills invoke Python scripts via dynamic context injection. Scripts read `~/.claude/projects/**/*.jsonl` and memory files directly. Claude interprets, filters, and summarizes the output.
 
-## Standalone CLI
-
-`cc-export.py` is available as a standalone CLI tool for exporting conversations:
+## Development
 
 ```bash
-python3 cc-export.py <session-id> [-o output.txt]
+# Local testing
+claude --plugin-dir /path/to/cman
 ```
+
+## License
+
+MIT
