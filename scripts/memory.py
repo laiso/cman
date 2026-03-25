@@ -49,10 +49,9 @@ def find_claude_md_files():
     # Auto memory
     memory_dir = Path.home() / ".claude" / "projects"
     if memory_dir.exists():
-        # Find most recent project memory
         for proj_dir in sorted(
             memory_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
-        )[:5]:
+        ):
             memory_md = proj_dir / "memory" / "MEMORY.md"
             if memory_md.exists():
                 files.append(("auto-memory", memory_md))
