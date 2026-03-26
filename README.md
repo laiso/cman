@@ -118,21 +118,21 @@ Memory Overview
 
 ## Requirements
 
-- Python 3 (standard library only)
+- [uv](https://docs.astral.sh/uv/) (Python package runner)
 
 ## Architecture
 
 ```
-Natural language          Skills (UX)              Scripts (data)
-                    ┌─────────────────┐      ┌────────────────┐
-"What did I do      │ cm-search       │─────▶│ sessions.py │
- yesterday?"     ──▶│ (auto-trigger)  │─────▶│ plans.py    │
-                    ├─────────────────┤─────▶│ memory.py   │
-/cman:cm-status  ──▶│ cm-status       │─────▶│ grep.py     │
-                    └─────────────────┘      └─────────────┘
+Natural language          Skills (UX)              MCP Server            Scripts (data)
+                    ┌─────────────────┐      ┌──────────────────┐  ┌────────────────┐
+"What did I do      │ cm-search       │─────▶│ list_sessions    │──│ sessions.py    │
+ yesterday?"     ──▶│ (auto-trigger)  │─────▶│ list_plans       │──│ plans.py       │
+                    ├─────────────────┤─────▶│ list_memory      │──│ memory.py      │
+/cman:cm-status  ──▶│ cm-status       │─────▶│ search_sessions  │──│ grep.py        │
+                    └─────────────────┘      └──────────────────┘  └────────────────┘
 ```
 
-Skills invoke Python scripts via dynamic context injection. Scripts read `~/.claude/projects/**/*.jsonl` and memory files directly. Claude interprets, filters, and summarizes the output.
+Skills call MCP tools served by `server.py` (stdio transport, launched via `uv run --script`). The MCP server reuses logic from the Python scripts, which read `~/.claude/projects/**/*.jsonl` and memory files directly. Claude interprets, filters, and summarizes the output.
 
 ## Development
 

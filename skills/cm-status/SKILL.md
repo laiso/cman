@@ -2,28 +2,21 @@
 name: cm-status
 description: Show current Claude Code activity. By default shows current project only. Use "all" to see all projects.
 argument-hint: [all]
-allowed-tools: Bash(python*)
-disable-model-invocation: true
+allowed-tools: mcp__plugin_cman_cman__*
 ---
 
 # Status
 
 Show an overview of current Claude Code activity.
 
-## Data
-
-### Plans
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plans.py`
-
-### Recent Sessions
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py -n 10 --exclude-subagents`
-
-### Memory
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory.py`
-
 ## Instructions
 
-Use the data in the Data section above to generate the output.
+First, gather data by calling these tools in parallel:
+1. `mcp__plugin_cman_cman__list_plans`
+2. `mcp__plugin_cman_cman__list_sessions` with limit=10 and exclude_subagents=true
+3. `mcp__plugin_cman_cman__list_memory`
+
+Then use the results to generate the output.
 
 ### Scope
 
