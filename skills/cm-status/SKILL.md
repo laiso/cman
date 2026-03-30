@@ -52,5 +52,5 @@ Filter plans, sessions, and memory by matching the project/cwd path.
 - If there are no active plans, say "No active plans" instead of an empty table.
 - For the CLI Resume column: use the `cd` path and session ID from the data to build `cd {cwd} && claude --resume {session_id}`. Use the `~` short path shown in the data. Never omit the session ID.
 - For the Interactive column: always show `/resume {session_id}` for all sessions.
-- For the Title column, rephrase raw prompts into brief work descriptions (e.g., "@README.md" → "README editing", "cman:search test" → "Search testing").
+- For the Title column, rephrase raw prompts into brief work descriptions (e.g., "@README.md" → "README editing", "/remember test" → "Search testing").
 - For Memory Overview, always include the full file path (e.g., `~/.claude/projects/-Users-.../memory/filename.md`) for each file listed in the data.

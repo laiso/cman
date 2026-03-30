@@ -1,12 +1,19 @@
 ---
 name: cm-search
-description: Search and summarize past Claude Code work across all projects. Use when the user asks about past sessions, what they worked on yesterday or last week, where they left off, or is looking for a specific past conversation by keyword. Also handles daily/weekly recaps and standup summaries.
+description: "[Deprecated — use remember /remember instead; removal planned] Search and summarize past Claude Code work across all projects. Same workflow as remember; kept temporarily for compatibility."
+argument-hint: [keywords...]
 allowed-tools: mcp__plugin_cman_cman__*
 ---
 
 # Search
 
-Search and summarize past Claude Code sessions, plans, and memory across all projects.
+> **Deprecation:** Prefer **`/remember`** ([remember skill](../remember/SKILL.md)). The **`cm-search`** skill name will be removed in a future release.
+
+Search and summarize past Claude Code sessions, plans, and memory across all projects. The **remember** skill delegates here for the full instructions.
+
+## Arguments
+
+If `$ARGUMENTS` is non-empty (e.g. `/remember FOO BAR`), join the tokens into the search keyword and follow the **Search** flow. Do not ask the user to repeat the query.
 
 ## Instructions
 
@@ -23,8 +30,8 @@ Then use the results to generate output. This skill searches across ALL projects
 3. Show in-progress work with resume commands
 4. Include session count and project stats
 
-### Search (e.g., "where was that auth work?", "find migration sessions")
-1. Extract the keyword from the user's question
+### Search (e.g., "where was that auth work?", "find migration sessions", or keyword arguments after `/remember`)
+1. Extract the keyword from the user's question, or from `$ARGUMENTS` when provided
 2. First, search session titles, plans, and memory from the gathered data
 3. Then ALWAYS run deep search: call `mcp__plugin_cman_cman__search_sessions` with the keyword
 4. Combine results from both and present with resume commands
@@ -36,4 +43,3 @@ Then use the results to generate output. This skill searches across ALL projects
 
 Always include `claude --resume <id>` for sessions the user might want to continue.
 Rephrase raw prompts into brief work descriptions (e.g., "@README.md" → "README editing").
-

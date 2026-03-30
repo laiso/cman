@@ -27,8 +27,10 @@ You can also use skills directly:
 
 | Skill | Scope | Purpose |
 |-------|-------|---------|
-| `/cman:cm-search` | All projects | Search and summarize past sessions by keyword or time |
-| `/cman:cm-status` | Current project | Quick overview of plans, sessions, and memory (`all` for everything) |
+| `/remember` … | All projects | Search and summarize past sessions (e.g. `/remember FOO BAR` for keywords) |
+| `/cm-status` | Current project | Quick overview of plans, sessions, and memory (`all` for everything) |
+
+The **`remember`** skill is the primary search command (`/remember`). With the plugin enabled, the palette may show the namespaced form (e.g. `cman:remember`). Workflow text lives in [`skills/cm-search/SKILL.md`](skills/cm-search/SKILL.md) for now; the legacy **`cm-search`** skill name is **deprecated** and will be removed in a future release. **`cm-status`** may appear as `cman:cm-status` in the same way.
 
 ## Example output
 
@@ -80,7 +82,7 @@ You can also use skills directly:
 
 </details>
 
-### /cman:cm-status
+### /cm-status
 
 <details>
 <summary>Show example</summary>
@@ -125,11 +127,13 @@ Memory Overview
 ```
 Natural language          Skills (UX)              MCP Server            Scripts (data)
                     ┌─────────────────┐      ┌──────────────────┐  ┌────────────────┐
-"What did I do      │ cm-search       │─────▶│ list_sessions    │──│ sessions.py    │
+"What did I do      │ remember        │─────▶│ list_sessions    │──│ sessions.py    │
  yesterday?"     ──▶│ (auto-trigger)  │─────▶│ list_plans       │──│ plans.py       │
                     ├─────────────────┤─────▶│ list_memory      │──│ memory.py      │
-/cman:cm-status  ──▶│ cm-status       │─────▶│ search_sessions  │──│ grep.py        │
+/cm-status       ──▶│ cm-status       │─────▶│ search_sessions  │──│ grep.py        │
+/remember …      ──▶│ remember        │─────▶│ (same pipeline)  │──│ (same)         │
                     └─────────────────┘      └──────────────────┘  └────────────────┘
+                    (workflow text: skills/cm-search/SKILL.md; cm-search skill deprecated)
 ```
 
 Skills call MCP tools served by `server.py` (stdio transport, launched via `uv run --script`). The MCP server reuses logic from the Python scripts, which read `~/.claude/projects/**/*.jsonl` and memory files directly. Claude interprets, filters, and summarizes the output.
