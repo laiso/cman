@@ -1,5 +1,6 @@
 {
   "name": "cman",
+  "version": "1.3.0",
   "description": "Agentic memory — search and summarize past sessions, plans, and memory across projects",
   "author": {
     "name": "laiso"
