@@ -28,6 +28,12 @@ def _home() -> str:
     return str(Path.home())
 
 
+def _display_path(raw: str) -> str:
+    """Replace the home directory prefix with ``~``."""
+    home = _home()
+    return raw.replace(home, "~", 1) if raw.startswith(home) else raw
+
+
 @mcp.tool()
 def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | None = None) -> str:
     """List recent Claude Code sessions with metadata including title, time, size, and resume commands."""
@@ -228,13 +234,12 @@ def search_sessions(
     if not results and not include_memory:
         return f'No sessions found matching "{keyword}"'
 
-    home = _home()
     lines: list[str] = []
 
     if results:
         lines += [f'=== Sessions matching "{keyword}" ===', ""]
         for i, r in enumerate(results, 1):
-            cwd_display = r["cwd"].replace(home, "~") if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
+            cwd_display = _display_path(r["cwd"]) if r["cwd"] else "unknown"
             lines.append(f"[{i}] {cwd_display}")
             if r["cwd"]:
                 needs_quote = "~" not in cwd_display
@@ -254,7 +259,7 @@ def search_sessions(
         if mem_results:
             lines += [f'=== Memory files matching "{keyword}" ===', ""]
             for j, mr in enumerate(mem_results, 1):
-                display_path = mr["path"].replace(home, "~", 1) if mr["path"].startswith(home) else mr["path"]
+                display_path = _display_path(mr["path"])
                 lines.append(f"[{j}] [{mr['scope']}] {display_path}")
                 lines.append(f"    {mr['snippet']}")
                 lines.append("")

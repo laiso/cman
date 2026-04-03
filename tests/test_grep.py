@@ -81,7 +81,7 @@ def test_snippet_short_content():
     assert _extract_snippet("short text", ["short"]) == "short text"
 
 
-def test_snippet_long_content_centres_on_token():
+def test_snippet_long_content_centers_on_token():
     content = "a" * 100 + " TARGET " + "b" * 100
     snippet = _extract_snippet(content, ["target"])
     assert "TARGET" in snippet
