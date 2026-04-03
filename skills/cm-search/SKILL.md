@@ -34,7 +34,10 @@ Then use the results to generate output. This skill searches across ALL projects
 1. Extract the keyword from the user's question, or from `$ARGUMENTS` when provided
 2. First, search session titles, plans, and memory from the gathered data
 3. Then ALWAYS run deep search: call `mcp__plugin_cman_cman__search_sessions` with the keyword
+   - Use `include_memory: true` when the user may have stored relevant notes
+   - Use `exclude_subagents: true` to skip sub-agent noise (default for targeted searches)
 4. Combine results from both and present with resume commands
+5. **Alternate spellings:** When searching for domain terms that may appear in different languages or spellings, run several `search_sessions` calls with alternate forms (e.g. English *and* Japanese: `Scan` / `スキャン`, or `DynamoDB` / `dynamo`) and merge the results
 
 ### General (e.g., "what was I working on?", "where did I leave off?")
 1. Show the most recent sessions with context
