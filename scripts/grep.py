@@ -8,12 +8,113 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
+# Relevance weights by message role
+_ROLE_WEIGHT = {"user": 3, "summary": 3, "assistant": 1, "system": 1}
+
+
+def _tokenize_query(keyword):
+    """Split query into lower-cased tokens for order-independent AND matching."""
+    return [t.lower() for t in keyword.split() if t]
+
+
+def _all_tokens_match(tokens, text_lower):
+    """Return True when every token appears somewhere in *text_lower*."""
+    return all(t in text_lower for t in tokens)
+
+
+def _collect_searchable_text(data):
+    """
+    Build a single searchable string and display role for one JSONL line.
+    Includes summary (session title), system messages, user/assistant text,
+    tool_use inputs (e.g. Bash commands), and user toolUseResult stdout/stderr.
+    """
+    t = data.get("type")
+    if t == "summary":
+        s = data.get("summary", "")
+        if isinstance(s, str) and s.strip():
+            return "summary", s
+        return None, ""
+    if t == "system":
+        c = data.get("content", "")
+        if isinstance(c, str) and c.strip():
+            return "system", c
+        return None, ""
+    if t not in ("user", "assistant"):
+        return None, ""
+
+    parts = []
+    msg = data.get("message", {})
+    content = msg.get("content", "")
+
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            pt = part.get("type")
+            if pt == "text":
+                parts.append(part.get("text", ""))
+            elif pt == "tool_use" and t == "assistant":
+                name = part.get("name", "")
+                inp = part.get("input", {})
+                if isinstance(inp, dict):
+                    parts.append(f"{name} {json.dumps(inp, ensure_ascii=False)}")
+                else:
+                    parts.append(f"{name} {inp}")
+    elif isinstance(content, str):
+        parts.append(content)
+
+    if t == "user":
+        tur = data.get("toolUseResult")
+        if isinstance(tur, dict):
+            for key in ("stdout", "stderr"):
+                v = tur.get(key)
+                if isinstance(v, str) and v:
+                    parts.append(v)
+
+    full = "\n".join(p for p in parts if p)
+    if not full.strip():
+        return None, ""
+    return t, full
+
+
+def _extract_snippet(content, tokens, max_len=200, context=80):
+    """Return a short snippet centred on the first matching token.
+
+    When no token is found in the text (e.g. match was across content blocks),
+    falls back to the first *max_len* characters.
+    """
+    snippet = content.strip().replace("\n", " ")
+    if len(snippet) <= max_len:
+        return snippet
+    snippet_lower = snippet.lower()
+    best_idx = len(snippet_lower)
+    best_token_len = 0
+    for t in tokens:
+        idx = snippet_lower.find(t)
+        if idx != -1 and (idx < best_idx or (idx == best_idx and len(t) > best_token_len)):
+            best_idx = idx
+            best_token_len = len(t)
+    # Fallback: no token found — show the beginning of the text
+    if best_idx >= len(snippet_lower):
+        best_idx = 0
+        best_token_len = 0
+    # Centre a window of at most max_len around the best token
+    half = max_len // 2
+    centre = best_idx + best_token_len // 2
+    start = max(0, centre - half)
+    end = min(len(snippet), start + max_len)
+    start = max(0, end - max_len)  # re-adjust if clamped at the end
+    return ("..." if start > 0 else "") + snippet[start:end] + ("..." if end < len(snippet) else "")
+
 
 def search_session(file_path, keyword, max_matches):
-    keyword_lower = keyword.lower()
+    tokens = _tokenize_query(keyword)
+    if not tokens:
+        return None
     session_id = file_path.stem
     cwd = None
     matches = []
+    score = 0.0
 
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -24,33 +125,18 @@ def search_session(file_path, keyword, max_matches):
                     if not cwd and "cwd" in data:
                         cwd = data["cwd"]
 
-                    if data.get("type") not in ("user", "assistant"):
-                        continue
-                    msg = data.get("message", {})
-                    content = msg.get("content", "")
-
-                    if isinstance(content, list):
-                        parts = []
-                        for part in content:
-                            if isinstance(part, dict) and part.get("type") == "text":
-                                parts.append(part.get("text", ""))
-                        content = "\n".join(parts)
-
-                    if not isinstance(content, str) or not content.strip():
+                    role, text = _collect_searchable_text(data)
+                    if not role or not text.strip():
                         continue
 
-                    if keyword_lower in content.lower():
-                        role = data["type"]
-                        snippet = content.strip().replace("\n", " ")
-                        if len(snippet) > 200:
-                            idx = snippet.lower().find(keyword_lower)
-                            start = max(0, idx - 80)
-                            end = min(len(snippet), idx + len(keyword) + 80)
-                            snippet = ("..." if start > 0 else "") + snippet[start:end] + ("..." if end < len(snippet) else "")
+                    if not _all_tokens_match(tokens, text.lower()):
+                        continue
+
+                    weight = _ROLE_WEIGHT.get(role, 1)
+                    score += weight
+                    if len(matches) < max_matches:
+                        snippet = _extract_snippet(text, tokens)
                         matches.append((role, snippet))
-
-                        if len(matches) >= max_matches:
-                            break
 
                 except (json.JSONDecodeError, KeyError):
                     continue
@@ -64,16 +150,47 @@ def search_session(file_path, keyword, max_matches):
         "session_id": session_id,
         "cwd": cwd,
         "matches": matches,
+        "score": score,
         "mtime": file_path.stat().st_mtime,
     }
 
 
+def search_memory_files(keyword, memory_files=None):
+    """Search memory (.md) file bodies for *keyword* tokens.
+
+    Returns a list of dicts with keys ``scope``, ``path``, ``snippet``, and ``score``.
+    """
+    if memory_files is None:
+        return []
+    tokens = _tokenize_query(keyword)
+    if not tokens:
+        return []
+    results = []
+    for scope, file_path in memory_files:
+        try:
+            text = file_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if not _all_tokens_match(tokens, text.lower()):
+            continue
+        snippet = _extract_snippet(text, tokens, max_len=200, context=80)
+        results.append({
+            "scope": scope,
+            "path": str(file_path),
+            "snippet": snippet,
+            "score": 1.0,
+        })
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Search Claude session contents by keyword")
-    parser.add_argument("keyword", help="Keyword to search for")
-    parser.add_argument("-n", "--limit", type=int, default=10, help="Max sessions to show (default: 10)")
+    parser.add_argument("keyword", help="Keyword (or multi-word query) to search for")
+    parser.add_argument("-n", "--limit", type=int, default=20, help="Max sessions to show (default: 20)")
     parser.add_argument("-m", "--max-matches", type=int, default=3, help="Max matches per session (default: 3)")
+    parser.add_argument("--offset", type=int, default=0, help="Skip first N results for pagination (default: 0)")
     parser.add_argument("--path", type=str, help="Projects directory path")
+    parser.add_argument("--exclude-subagents", action="store_true", help="Exclude agent-* session files")
     args = parser.parse_args()
 
     project_dir = Path(args.path) if args.path else PROJECTS_DIR
@@ -83,6 +200,8 @@ def main():
         return 1
 
     jsonl_files = list(project_dir.rglob("*.jsonl"))
+    if args.exclude_subagents:
+        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -95,8 +214,10 @@ def main():
             if result:
                 results.append(result)
 
-    results.sort(key=lambda x: x["mtime"], reverse=True)
-    results = results[: args.limit]
+    # Primary sort by relevance score (desc), secondary by mtime (desc)
+    results.sort(key=lambda x: (x["score"], x["mtime"]), reverse=True)
+    offset = max(0, args.offset)
+    results = results[offset : offset + args.limit]
 
     if not results:
         print(f'No sessions found matching "{args.keyword}"')
@@ -107,7 +228,7 @@ def main():
 
     home = str(Path.home())
     for i, r in enumerate(results, 1):
-        cwd_display = r["cwd"].replace(home, "~") if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
+        cwd_display = r["cwd"].replace(home, "~", 1) if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
         print(f"[{i}] {cwd_display}")
         if r["cwd"]:
             import shlex
@@ -117,7 +238,14 @@ def main():
         else:
             print(f"    claude --resume {r['session_id']}")
         for role, snippet in r["matches"]:
-            prefix = "❯" if role == "user" else " "
+            if role == "user":
+                prefix = "❯"
+            elif role == "summary":
+                prefix = "·"
+            elif role == "system":
+                prefix = "%"
+            else:
+                prefix = " "
             print(f"    {prefix} {snippet}")
         print()
 

@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "scripts"))
 
 from mcp.server.fastmcp import FastMCP
 
-from grep import search_session, PROJECTS_DIR as GREP_PROJECTS_DIR
+from grep import search_session, search_memory_files, PROJECTS_DIR as GREP_PROJECTS_DIR
 from sessions import list_sessions as _list_sessions
 from plans import process_file as _process_plan_file, PROJECTS_DIR as PLANS_PROJECTS_DIR
 from memory import find_claude_md_files, get_file_preview, format_path
@@ -175,14 +175,40 @@ def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, c
 
 
 @mcp.tool()
-def search_sessions(keyword: str, limit: int = 10, max_matches: int = 3, path: str | None = None) -> str:
-    """Full-text search across Claude Code session contents by keyword."""
+def search_sessions(
+    keyword: str,
+    limit: int = 20,
+    max_matches: int = 3,
+    offset: int = 0,
+    exclude_subagents: bool = False,
+    include_memory: bool = False,
+    include_history: bool = False,
+    path: str | None = None,
+) -> str:
+    """Full-text search across Claude Code session contents by keyword.
+
+    Multi-word queries use order-independent AND matching (all tokens must
+    appear).  Results are ranked by relevance score, then by recency.
+
+    Set *include_memory* to also search memory file bodies.
+    Set *include_history* to also search ``~/.claude/history.jsonl``.
+      Note: history.jsonl may contain inputs from all projects — use with care.
+    Set *exclude_subagents* to skip ``agent-*`` session files.
+    Use *offset* for pagination (skip first N results).
+    """
     project_dir = Path(path) if path else GREP_PROJECTS_DIR
 
     if not project_dir.exists():
         return f"Error: {project_dir} not found"
 
     jsonl_files = list(project_dir.rglob("*.jsonl"))
+    if exclude_subagents:
+        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
+
+    if include_history:
+        history_file = Path.home() / ".claude" / "history.jsonl"
+        if history_file.exists():
+            jsonl_files.append(history_file)
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -195,28 +221,57 @@ def search_sessions(keyword: str, limit: int = 10, max_matches: int = 3, path: s
             if result:
                 results.append(result)
 
-    results.sort(key=lambda x: x["mtime"], reverse=True)
-    results = results[:limit]
+    # Primary sort by relevance score (desc), secondary by mtime (desc)
+    results.sort(key=lambda x: (x["score"], x["mtime"]), reverse=True)
+    safe_offset = max(0, offset)
+    results = results[safe_offset : safe_offset + limit]
 
-    if not results:
+    if not results and not include_memory:
         return f'No sessions found matching "{keyword}"'
 
-    home = _home()
-    lines = [f'=== Sessions matching "{keyword}" ===', ""]
+    lines: list[str] = []
 
-    for i, r in enumerate(results, 1):
-        cwd_display = r["cwd"].replace(home, "~") if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
-        lines.append(f"[{i}] {cwd_display}")
-        if r["cwd"]:
-            needs_quote = "~" not in cwd_display
-            quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
-            lines.append(f"    cd {quoted_cwd} && claude --resume {r['session_id']}")
-        else:
-            lines.append(f"    claude --resume {r['session_id']}")
-        for role, snippet in r["matches"]:
-            prefix = "❯" if role == "user" else " "
-            lines.append(f"    {prefix} {snippet}")
-        lines.append("")
+    if results:
+        lines += [f'=== Sessions matching "{keyword}" ===', ""]
+        for i, r in enumerate(results, 1):
+            cwd_display = format_path(Path(r["cwd"])) if r["cwd"] else "unknown"
+            sid = r["session_id"]
+            lines.append(f"[{i}] {cwd_display}")
+            # history.jsonl has stem "history" which is not a resumable session
+            is_resumable = sid != "history"
+            if r["cwd"] and is_resumable:
+                needs_quote = "~" not in cwd_display
+                quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
+                lines.append(f"    cd {quoted_cwd} && claude --resume {sid}")
+            elif is_resumable:
+                lines.append(f"    claude --resume {sid}")
+            else:
+                lines.append(f"    (from ~/.claude/history.jsonl)")
+            for role, snippet in r["matches"]:
+                if role == "user":
+                    prefix = "❯"
+                elif role == "summary":
+                    prefix = "·"
+                elif role == "system":
+                    prefix = "%"
+                else:
+                    prefix = " "
+                lines.append(f"    {prefix} {snippet}")
+            lines.append("")
+
+    if include_memory:
+        mem_files = find_claude_md_files()
+        mem_results = search_memory_files(keyword, mem_files)
+        if mem_results:
+            lines += [f'=== Memory files matching "{keyword}" ===', ""]
+            for j, mr in enumerate(mem_results, 1):
+                display_path = format_path(Path(mr["path"]))
+                lines.append(f"[{j}] [{mr['scope']}] {display_path}")
+                lines.append(f"    {mr['snippet']}")
+                lines.append("")
+
+    if not lines:
+        return f'No results found matching "{keyword}"'
 
     return "\n".join(lines)
 
