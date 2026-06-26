@@ -2,7 +2,7 @@
 name: cm-status
 description: Show current coding-agent activity. By default shows current project only. Use "all" to see all projects.
 argument-hint: [all]
-allowed-tools: mcp__plugin_cman_cman__*
+allowed-tools: mcp__plugin_cman_cman__*, mcp__cman__*
 ---
 
 # Status
@@ -41,7 +41,7 @@ Filter plans, sessions, and memory by matching the project/cwd path.
 | # | Agent | Title | Project | When | CLI Resume |
 |---|-------|-------|---------|------|------------|
 | 1 | Claude | {title} | {project} | {relative_time} | `cd {cwd} && claude --resume {session_id}` |
-| 2 | Pi | {title} | {project} | {relative_time} | `cd {cwd} && pi --session {path}` |
+| 2 | Pi | {title} | {project} | {relative_time} | `cd {cwd} && pi --session {session_id}` |
 
 ### Memory Overview
 - {project}: {count} files

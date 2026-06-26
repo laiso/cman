@@ -4,8 +4,11 @@ import argparse
 import json
 import os
 import shlex
+from sanitize import shell_cd_command, resume_command, strip_unsafe_terminal
+from scan import iter_jsonl_files
+from path_guard import ensure_allowed_path
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -31,6 +34,44 @@ def get_relative_time(mtime: float) -> str:
         return datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
 
 
+def parse_since(value: str | None) -> float | None:
+    if not value:
+        return None
+
+    normalized = value.strip().lower()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if normalized == "today":
+        return today.timestamp()
+    if normalized == "yesterday":
+        return (today - timedelta(days=1)).timestamp()
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(value.strip(), fmt).timestamp()
+        except ValueError:
+            pass
+
+    raise ValueError("since must be 'today', 'yesterday', YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS")
+
+
+def _clean_title_text(text: str) -> str | None:
+    title = text.strip().split("\n")[0].strip()
+    if not title:
+        return None
+
+    skipped_prefixes = (
+        "<command-message>",
+        "<command-name>",
+        "<local-command-caveat>",
+        "<local-command-stdout>",
+        "<local-command-stderr>",
+    )
+    if title.startswith(skipped_prefixes):
+        return None
+
+    return title[:80]
+
+
 def get_first_message_title(file: Path) -> str:
     try:
         with open(file, "r", encoding="utf-8") as f:
@@ -42,16 +83,18 @@ def get_first_message_title(file: Path) -> str:
                     if data.get("type") == "user" and "message" in data:
                         content = data["message"].get("content", "")
                         if isinstance(content, str) and content.strip():
-                            return content.split("\n")[0][:80]
+                            title = _clean_title_text(content)
+                            if title:
+                                return title
                         elif isinstance(content, list):
                             for part in content:
                                 if (
                                     isinstance(part, dict)
                                     and part.get("type") == "text"
                                 ):
-                                    text = part.get("text", "").strip()
-                                    if text:
-                                        return text.split("\n")[0][:80]
+                                    title = _clean_title_text(part.get("text", ""))
+                                    if title:
+                                        return title
                 except (json.JSONDecodeError, KeyError):
                     continue
     except Exception:
@@ -92,16 +135,24 @@ def process_session(f: Path) -> dict:
     }
 
 
-def list_sessions(project_dir: Path = None, limit: int = 50, exclude_subagents: bool = False):
+def list_sessions(
+    project_dir: Path = None,
+    limit: int = 50,
+    exclude_subagents: bool = False,
+    since: str | None = None,
+):
     if project_dir is None:
         project_dir = claude_projects_dir()
 
     if not project_dir.exists():
         raise FileNotFoundError(f"Projects directory not found: {project_dir}")
 
-    jsonl_files = list(project_dir.rglob("*.jsonl"))
+    jsonl_files = list(iter_jsonl_files(project_dir))
     if exclude_subagents:
         jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
+    since_ts = parse_since(since)
+    if since_ts is not None:
+        jsonl_files = [f for f in jsonl_files if f.stat().st_mtime >= since_ts]
     jsonl_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
 
     sessions = []
@@ -131,12 +182,21 @@ def main():
     parser.add_argument(
         "--exclude-subagents", action="store_true", help="Exclude subagent sessions (agent-* prefix)"
     )
+    parser.add_argument(
+        "--since",
+        help="Only show sessions modified since 'today', 'yesterday', YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS",
+    )
     args = parser.parse_args()
 
-    project_dir = Path(args.path) if args.path else None
+    project_dir = ensure_allowed_path(args.path, [claude_projects_dir()], "path") if args.path else None
 
     try:
-        sessions = list_sessions(project_dir, args.limit, exclude_subagents=args.exclude_subagents)
+        sessions = list_sessions(
+            project_dir,
+            args.limit,
+            exclude_subagents=args.exclude_subagents,
+            since=args.since,
+        )
 
         if args.quiet:
             for s in sessions:
@@ -147,17 +207,12 @@ def main():
         print()
 
         for i, s in enumerate(sessions, 1):
-            print(f"[{i}] {s['title']}")
+            print(f"[{i}] {strip_unsafe_terminal(s['title'])}")
             print(f"    {s['relative_time']} · {s['size']}")
             if s["cwd"]:
-                cwd = s["cwd"]
-                home = str(Path.home())
-                display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-                needs_quote = "~" not in display_cwd
-                quoted_cwd = shlex.quote(display_cwd) if needs_quote else display_cwd
-                print(f"    cd {quoted_cwd} && claude --resume {s['session_id']}")
+                print(f"    {shell_cd_command(s['cwd'], 'claude', '--resume', s['session_id'])}")
             else:
-                print(f"    claude --resume {s['session_id']}")
+                print(f"    {resume_command('claude', '--resume', s['session_id'])}")
             print()
 
         if not sessions:

@@ -6,6 +6,9 @@ import os
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from sanitize import display_path, shell_cd_command, resume_command, strip_unsafe_terminal
+from scan import iter_jsonl_files
+from path_guard import ensure_allowed_path
 
 def claude_dir() -> Path:
     return Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
@@ -198,13 +201,13 @@ def main():
     parser.add_argument("--exclude-subagents", action="store_true", help="Exclude agent-* session files")
     args = parser.parse_args()
 
-    project_dir = Path(args.path) if args.path else PROJECTS_DIR
+    project_dir = ensure_allowed_path(args.path, [PROJECTS_DIR], "path") if args.path else PROJECTS_DIR
 
     if not project_dir.exists():
         print(f"Error: {project_dir} not found", file=sys.stderr)
         return 1
 
-    jsonl_files = list(project_dir.rglob("*.jsonl"))
+    jsonl_files = list(iter_jsonl_files(project_dir))
     if args.exclude_subagents:
         jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
 
@@ -233,15 +236,12 @@ def main():
 
     home = str(Path.home())
     for i, r in enumerate(results, 1):
-        cwd_display = r["cwd"].replace(home, "~", 1) if r["cwd"] and r["cwd"].startswith(home) else (r["cwd"] or "unknown")
+        cwd_display = display_path(r["cwd"]) if r["cwd"] else "unknown"
         print(f"[{i}] {cwd_display}")
         if r["cwd"]:
-            import shlex
-            needs_quote = "~" not in cwd_display
-            quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
-            print(f"    cd {quoted_cwd} && claude --resume {r['session_id']}")
+            print(f"    {shell_cd_command(r['cwd'], 'claude', '--resume', r['session_id'])}")
         else:
-            print(f"    claude --resume {r['session_id']}")
+            print(f"    {resume_command('claude', '--resume', r['session_id'])}")
         for role, snippet in r["matches"]:
             if role == "user":
                 prefix = "❯"
@@ -251,7 +251,7 @@ def main():
                 prefix = "%"
             else:
                 prefix = " "
-            print(f"    {prefix} {snippet}")
+            print(f"    {prefix} {strip_unsafe_terminal(snippet)}")
         print()
 
     return 0

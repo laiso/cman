@@ -11,7 +11,27 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from grep import _all_tokens_match, _extract_snippet, _tokenize_query
-from sessions import get_relative_time
+from sessions import get_relative_time, parse_since
+from sanitize import display_path as _safe_display_path
+from sanitize import fold_home, shell_cd_command, resume_command, strip_unsafe_terminal
+from scan import iter_jsonl_files
+from path_guard import ensure_allowed_path
+
+
+def _home() -> str:
+    return os.environ.get("HOME", str(Path.home()))
+
+
+def _display_path(value: str | Path | None) -> str:
+    if not value:
+        return "unknown"
+    text = str(value)
+    home = _home()
+    return _safe_display_path(text, home)
+
+
+def _sanitize_text(text: str) -> str:
+    return fold_home(text, _home())
 
 
 def pi_agent_dir() -> Path:
@@ -113,7 +133,7 @@ def _first_user_title(file_path: Path) -> str:
                     continue
                 text = _content_to_text(message.get("content", "")).strip()
                 if text:
-                    return text.split("\n")[0][:80]
+                    return strip_unsafe_terminal(text.split("\n")[0])[:80]
     except Exception:
         pass
     return "(no messages)"
@@ -132,7 +152,7 @@ def process_pi_session(file_path: Path) -> dict:
         "source": "pi",
         "session_id": session_id,
         "cwd": header.get("cwd"),
-        "title": _first_user_title(file_path),
+        "title": _sanitize_text(_first_user_title(file_path)),
         "mtime": stat.st_mtime,
         "relative_time": get_relative_time(stat.st_mtime),
         "size": size_str,
@@ -140,14 +160,17 @@ def process_pi_session(file_path: Path) -> dict:
     }
 
 
-def list_pi_sessions(session_dir: Path = None, limit: int = 50):
+def list_pi_sessions(session_dir: Path = None, limit: int = 50, since: str | None = None):
     if session_dir is None:
         session_dir = pi_sessions_dir()
 
     if not session_dir.exists():
         raise FileNotFoundError(f"Pi sessions directory not found: {session_dir}")
 
-    jsonl_files = list(session_dir.rglob("*.jsonl"))
+    jsonl_files = list(iter_jsonl_files(session_dir))
+    since_ts = parse_since(since)
+    if since_ts is not None:
+        jsonl_files = [f for f in jsonl_files if f.stat().st_mtime >= since_ts]
     jsonl_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
 
     sessions = []
@@ -191,7 +214,7 @@ def search_pi_session(file_path: Path, keyword: str, max_matches: int):
 
                 score += _ROLE_WEIGHT.get(role, 1)
                 if len(matches) < max_matches:
-                    matches.append((role, _extract_snippet(text, tokens)))
+                    matches.append((role, _sanitize_text(_extract_snippet(text, tokens))))
     except Exception:
         return None
 
@@ -215,9 +238,13 @@ def main():
     parser.add_argument("-n", "--limit", type=int, default=50, help="Number of sessions to show")
     parser.add_argument("-m", "--max-matches", type=int, default=3, help="Max matches per session")
     parser.add_argument("--path", type=str, help="Pi sessions directory path")
+    parser.add_argument(
+        "--since",
+        help="Only show/search sessions modified since 'today', 'yesterday', YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS",
+    )
     args = parser.parse_args()
 
-    session_dir = Path(args.path) if args.path else None
+    session_dir = ensure_allowed_path(args.path, [pi_sessions_dir()], "path") if args.path else None
 
     try:
         if args.keyword:
@@ -226,7 +253,10 @@ def main():
                 print(f"Error: {search_dir} not found", file=sys.stderr)
                 return 1
             results = []
-            for file_path in search_dir.rglob("*.jsonl"):
+            since_ts = parse_since(args.since)
+            for file_path in iter_jsonl_files(search_dir):
+                if since_ts is not None and file_path.stat().st_mtime < since_ts:
+                    continue
                 result = search_pi_session(file_path, args.keyword, args.max_matches)
                 if result:
                     results.append(result)
@@ -238,21 +268,27 @@ def main():
             print(f'=== Pi Sessions matching "{args.keyword}" ===')
             print()
             for i, result in enumerate(results, 1):
-                print(f"[{i}] {result['cwd'] or 'unknown'}")
-                print(f"    pi --session {shlex.quote(str(result['file']))}")
+                print(f"[{i}] {_display_path(result['cwd'])}")
+                if result["cwd"]:
+                    print(f"    {shell_cd_command(result['cwd'], 'pi', '--session', result['session_id'])}")
+                else:
+                    print(f"    {resume_command('pi', '--session', result['session_id'])}")
                 for role, snippet in result["matches"]:
                     prefix = ">" if role == "user" else " "
-                    print(f"    {prefix} {snippet}")
+                    print(f"    {prefix} {strip_unsafe_terminal(snippet)}")
                 print()
             return 0
 
-        sessions = list_pi_sessions(session_dir, args.limit)
+        sessions = list_pi_sessions(session_dir, args.limit, since=args.since)
         print("=== Pi Sessions ===")
         print()
         for i, session in enumerate(sessions, 1):
-            print(f"[{i}] {session['title']}")
+            print(f"[{i}] {strip_unsafe_terminal(session['title'])}")
             print(f"    {session['relative_time']} · {session['size']}")
-            print(f"    pi --session {shlex.quote(str(session['file']))}")
+            if session["cwd"]:
+                print(f"    {shell_cd_command(session['cwd'], 'pi', '--session', session['session_id'])}")
+            else:
+                print(f"    {resume_command('pi', '--session', session['session_id'])}")
             print()
         if not sessions:
             print("No sessions found")

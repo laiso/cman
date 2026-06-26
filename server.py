@@ -18,6 +18,11 @@ from sessions import list_sessions as _list_sessions
 from plans import process_file as _process_plan_file, PROJECTS_DIR as PLANS_PROJECTS_DIR
 from memory import find_claude_md_files, get_file_preview, format_path
 from pi_sessions import list_pi_sessions as _list_pi_sessions, search_pi_session
+from pi_sessions import _sanitize_text as _sanitize_pi_text
+from search_all import search_all as _search_all
+from sanitize import display_path, shell_cd_command, resume_command, strip_unsafe_terminal
+from path_guard import ensure_allowed_path
+from scan import iter_jsonl_files
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -26,10 +31,21 @@ def _home() -> str:
     return str(Path.home())
 
 
-def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | None = None) -> str:
+def list_sessions(
+    limit: int = 50,
+    exclude_subagents: bool = False,
+    path: str | None = None,
+    since: str | None = None,
+) -> str:
     """List recent Claude Code sessions with metadata including title, time, size, and resume commands."""
-    project_dir = Path(path) if path else None
-    sessions = _list_sessions(project_dir, limit, exclude_subagents=exclude_subagents)
+    safe_limit = max(1, min(100, int(limit)))
+    project_dir = ensure_allowed_path(path, [GREP_PROJECTS_DIR], "path") if path else None
+    sessions = _list_sessions(
+        project_dir,
+        safe_limit,
+        exclude_subagents=exclude_subagents,
+        since=since,
+    )
 
     if not sessions:
         return "No sessions found"
@@ -38,19 +54,15 @@ def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | 
     lines = ["=== Claude Sessions ===", ""]
 
     for i, s in enumerate(sessions, 1):
-        lines.append(f"[{i}] {s['title']}")
+        lines.append(f"[{i}] {strip_unsafe_terminal(s['title'])}")
         lines.append(f"    {s['relative_time']} · {s['size']}")
         if s["cwd"]:
-            cwd = s["cwd"]
-            display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-            needs_quote = "~" not in display_cwd
-            quoted_cwd = shlex.quote(display_cwd) if needs_quote else display_cwd
-            lines.append(f"    cd {quoted_cwd} && claude --resume {s['session_id']}")
+            lines.append(f"    {shell_cd_command(s['cwd'], 'claude', '--resume', s['session_id'])}")
         else:
-            lines.append(f"    claude --resume {s['session_id']}")
+            lines.append(f"    {resume_command('claude', '--resume', s['session_id'])}")
         lines.append("")
 
-    if len(sessions) < limit:
+    if len(sessions) < safe_limit:
         lines.append(f"Total: {len(sessions)} sessions")
 
     return "\n".join(lines)
@@ -58,14 +70,15 @@ def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | 
 
 def list_plans(plans_dir: str | None = None) -> str:
     """List Claude Code plans with linked sessions and resume commands."""
-    pd = Path(plans_dir) if plans_dir else Path.home() / ".claude" / "plans"
+    default_plans = Path.home() / ".claude" / "plans"
+    pd = ensure_allowed_path(plans_dir, [default_plans], "plans_dir") if plans_dir else default_plans
 
     if not PLANS_PROJECTS_DIR.exists():
         return f"Error: {PLANS_PROJECTS_DIR} not found"
     if not pd.exists():
         return "No plans found"
 
-    jsonl_files = list(PLANS_PROJECTS_DIR.rglob("*.jsonl"))
+    jsonl_files = list(iter_jsonl_files(PLANS_PROJECTS_DIR))
 
     results = []
     for f in jsonl_files:
@@ -95,17 +108,13 @@ def list_plans(plans_dir: str | None = None) -> str:
             if plan_file_path.startswith(home)
             else plan_file_path
         )
-        lines.append(f"[{i}] {title}")
-        lines.append(f"    open {display_path}")
+        lines.append(f"[{i}] {strip_unsafe_terminal(title)}")
+        lines.append(f"    open {shlex.quote(strip_unsafe_terminal(plan_file_path))}")
         for session_id, cwd, _ in sessions:
             if cwd:
-                display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-                needs_quote = "~" not in display_cwd
-                lines.append(
-                    f"    cd {shlex.quote(display_cwd) if needs_quote else display_cwd} && claude --resume {session_id}"
-                )
+                lines.append(f"    {shell_cd_command(cwd, 'claude', '--resume', session_id)}")
             else:
-                lines.append(f"    claude --resume {session_id}")
+                lines.append(f"    {resume_command('claude', '--resume', session_id)}")
         lines.append("")
 
     return "\n".join(lines)
@@ -113,22 +122,8 @@ def list_plans(plans_dir: str | None = None) -> str:
 
 def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, cwd: str | None = None) -> str:
     """Discover and preview Claude memory files across all scopes (managed, user, project, auto-memory)."""
-    import os
-
-    # Temporarily change cwd if provided, for memory.py's Path.cwd() usage
-    original_cwd = None
-    if cwd:
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(cwd)
-        except OSError:
-            pass
-
-    try:
-        files = find_claude_md_files()
-    finally:
-        if original_cwd:
-            os.chdir(original_cwd)
+    safe_lines = max(0, min(50, int(lines)))
+    files = find_claude_md_files(cwd)
 
     if pattern:
         files = [
@@ -148,7 +143,7 @@ def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, c
         if len(files) == 1:
             file_path = files[0][1]
             with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
+                return strip_unsafe_terminal(f.read())
         else:
             out = ["Multiple files found. Specify a pattern to select one:"]
             for scope, f in files:
@@ -161,10 +156,10 @@ def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, c
         if scope != current_scope:
             out.append(f"## {scope}")
             current_scope = scope
-        preview = get_file_preview(file_path, lines)
+        preview = get_file_preview(file_path, safe_lines)
         out.append(f"\n### {format_path(file_path)}")
         for line in preview.split("\n"):
-            out.append(f"  {line}")
+            out.append(f"  {strip_unsafe_terminal(line)}")
 
     return "\n".join(out)
 
@@ -190,12 +185,14 @@ def search_sessions(
     Set *exclude_subagents* to skip ``agent-*`` session files.
     Use *offset* for pagination (skip first N results).
     """
-    project_dir = Path(path) if path else GREP_PROJECTS_DIR
+    safe_limit = max(1, min(100, int(limit)))
+    safe_matches = max(1, min(20, int(max_matches)))
+    project_dir = ensure_allowed_path(path, [GREP_PROJECTS_DIR], "path") if path else GREP_PROJECTS_DIR
 
     if not project_dir.exists():
         return f"Error: {project_dir} not found"
 
-    jsonl_files = list(project_dir.rglob("*.jsonl"))
+    jsonl_files = list(iter_jsonl_files(project_dir))
     if exclude_subagents:
         jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
 
@@ -207,7 +204,7 @@ def search_sessions(
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
-            executor.submit(search_session, f, keyword, max_matches): f
+            executor.submit(search_session, f, keyword, safe_matches): f
             for f in jsonl_files
         }
         for future in as_completed(futures):
@@ -218,7 +215,7 @@ def search_sessions(
     # Primary sort by relevance score (desc), secondary by mtime (desc)
     results.sort(key=lambda x: (x["score"], x["mtime"]), reverse=True)
     safe_offset = max(0, offset)
-    results = results[safe_offset : safe_offset + limit]
+    results = results[safe_offset : safe_offset + safe_limit]
 
     if not results and not include_memory:
         return f'No sessions found matching "{keyword}"'
@@ -228,17 +225,15 @@ def search_sessions(
     if results:
         lines += [f'=== Sessions matching "{keyword}" ===', ""]
         for i, r in enumerate(results, 1):
-            cwd_display = format_path(Path(r["cwd"])) if r["cwd"] else "unknown"
+            cwd_display = display_path(r["cwd"]) if r["cwd"] else "unknown"
             sid = r["session_id"]
             lines.append(f"[{i}] {cwd_display}")
             # history.jsonl has stem "history" which is not a resumable session
             is_resumable = sid != "history"
             if r["cwd"] and is_resumable:
-                needs_quote = "~" not in cwd_display
-                quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
-                lines.append(f"    cd {quoted_cwd} && claude --resume {sid}")
+                lines.append(f"    {shell_cd_command(r['cwd'], 'claude', '--resume', sid)}")
             elif is_resumable:
-                lines.append(f"    claude --resume {sid}")
+                lines.append(f"    {resume_command('claude', '--resume', sid)}")
             else:
                 lines.append(f"    (from ~/.claude/history.jsonl)")
             for role, snippet in r["matches"]:
@@ -250,7 +245,7 @@ def search_sessions(
                     prefix = "%"
                 else:
                     prefix = " "
-                lines.append(f"    {prefix} {snippet}")
+                lines.append(f"    {prefix} {strip_unsafe_terminal(snippet)}")
             lines.append("")
 
     if include_memory:
@@ -259,9 +254,9 @@ def search_sessions(
         if mem_results:
             lines += [f'=== Memory files matching "{keyword}" ===', ""]
             for j, mr in enumerate(mem_results, 1):
-                display_path = format_path(Path(mr["path"]))
-                lines.append(f"[{j}] [{mr['scope']}] {display_path}")
-                lines.append(f"    {mr['snippet']}")
+                mem_display_path = format_path(Path(mr["path"]))
+                lines.append(f"[{j}] [{mr['scope']}] {mem_display_path}")
+                lines.append(f"    {strip_unsafe_terminal(mr['snippet'])}")
                 lines.append("")
 
     if not lines:
@@ -270,12 +265,15 @@ def search_sessions(
     return "\n".join(lines)
 
 
-def list_pi_sessions(limit: int = 50, path: str | None = None) -> str:
+def list_pi_sessions(limit: int = 50, path: str | None = None, since: str | None = None) -> str:
     """List recent Pi Coding Agent sessions with metadata and resume commands."""
-    session_dir = Path(path) if path else None
+    from pi_sessions import pi_sessions_dir
+
+    safe_limit = max(1, min(100, int(limit)))
+    session_dir = ensure_allowed_path(path, [pi_sessions_dir()], "path") if path else None
 
     try:
-        sessions = _list_pi_sessions(session_dir, limit)
+        sessions = _list_pi_sessions(session_dir, safe_limit, since=since)
     except FileNotFoundError as e:
         if path is None:
             return "No Pi sessions found"
@@ -288,21 +286,17 @@ def list_pi_sessions(limit: int = 50, path: str | None = None) -> str:
     lines = ["=== Pi Sessions ===", ""]
 
     for i, s in enumerate(sessions, 1):
-        lines.append(f"[{i}] {s['title']}")
+        lines.append(f"[{i}] {strip_unsafe_terminal(s['title'])}")
         lines.append(f"    {s['relative_time']} · {s['size']}")
         if s["cwd"]:
-            cwd = s["cwd"]
-            display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-            needs_quote = "~" not in display_cwd
-            quoted_cwd = shlex.quote(display_cwd) if needs_quote else display_cwd
             lines.append(
-                f"    cd {quoted_cwd} && pi --session {shlex.quote(str(s['file']))}"
+                f"    {shell_cd_command(s['cwd'], 'pi', '--session', s['session_id'])}"
             )
         else:
-            lines.append(f"    pi --session {shlex.quote(str(s['file']))}")
+            lines.append(f"    {resume_command('pi', '--session', s['session_id'])}")
         lines.append("")
 
-    if len(sessions) < limit:
+    if len(sessions) < safe_limit:
         lines.append(f"Total: {len(sessions)} sessions")
 
     return "\n".join(lines)
@@ -316,11 +310,11 @@ def search_pi_sessions(
     path: str | None = None,
 ) -> str:
     """Full-text search across Pi Coding Agent session contents by keyword."""
-    session_dir = Path(path) if path else None
-    if session_dir is None:
-        from pi_sessions import pi_sessions_dir
+    from pi_sessions import pi_sessions_dir
 
-        session_dir = pi_sessions_dir()
+    safe_limit = max(1, min(100, int(limit)))
+    safe_matches = max(1, min(20, int(max_matches)))
+    session_dir = ensure_allowed_path(path, [pi_sessions_dir()], "path") if path else pi_sessions_dir()
 
     if not session_dir.exists():
         if path is None:
@@ -330,8 +324,8 @@ def search_pi_sessions(
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
-            executor.submit(search_pi_session, f, keyword, max_matches): f
-            for f in session_dir.rglob("*.jsonl")
+            executor.submit(search_pi_session, f, keyword, safe_matches): f
+            for f in iter_jsonl_files(session_dir)
         }
         for future in as_completed(futures):
             result = future.result()
@@ -340,29 +334,48 @@ def search_pi_sessions(
 
     results.sort(key=lambda x: (x["score"], x["mtime"]), reverse=True)
     safe_offset = max(0, offset)
-    results = results[safe_offset : safe_offset + limit]
+    results = results[safe_offset : safe_offset + safe_limit]
 
     if not results:
         return f'No Pi sessions found matching "{keyword}"'
 
     lines = [f'=== Pi Sessions matching "{keyword}" ===', ""]
     for i, result in enumerate(results, 1):
-        cwd_display = format_path(Path(result["cwd"])) if result["cwd"] else "unknown"
+        cwd_display = display_path(result["cwd"]) if result["cwd"] else "unknown"
         lines.append(f"[{i}] {cwd_display}")
         if result["cwd"]:
-            needs_quote = "~" not in cwd_display
-            quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
             lines.append(
-                f"    cd {quoted_cwd} && pi --session {shlex.quote(str(result['file']))}"
+                f"    {shell_cd_command(result['cwd'], 'pi', '--session', result['session_id'])}"
             )
         else:
-            lines.append(f"    pi --session {shlex.quote(str(result['file']))}")
+            lines.append(f"    {resume_command('pi', '--session', result['session_id'])}")
         for role, snippet in result["matches"]:
             prefix = "❯" if role == "user" else " "
-            lines.append(f"    {prefix} {snippet}")
+            lines.append(f"    {prefix} {_sanitize_pi_text(snippet)}")
         lines.append("")
 
     return "\n".join(lines)
+
+
+def search_all(
+    keyword: str,
+    limit: int = 20,
+    max_matches: int = 3,
+    include_memory: bool = True,
+    claude_path: str | None = None,
+    pi_path: str | None = None,
+    source: str = "all",
+) -> str:
+    """Cross-search Claude Code sessions, Pi sessions, and memory files."""
+    return _search_all(
+        keyword,
+        limit=max(1, min(100, int(limit))),
+        max_matches=max(1, min(20, int(max_matches))),
+        include_memory=include_memory,
+        claude_path=str(ensure_allowed_path(claude_path, [GREP_PROJECTS_DIR], "claude_path")) if claude_path else None,
+        pi_path=str(ensure_allowed_path(pi_path, [__import__('pi_sessions').pi_sessions_dir()], "pi_path")) if pi_path else None,
+        source=source,
+    )
 
 
 def run_smoke() -> int:
@@ -373,6 +386,7 @@ def run_smoke() -> int:
         ("search", search_sessions("cman", limit=5), "matching"),
         ("pi sessions", list_pi_sessions(limit=5), ("Pi Sessions", "No Pi sessions found")),
         ("pi search", search_pi_sessions("cman", limit=5), ("Pi Sessions matching", "No Pi sessions found")),
+        ("cross search", search_all("cman", limit=5), "Cross-agent memory matching"),
     ]
     for name, output, expected in checks:
         expected_values = expected if isinstance(expected, tuple) else (expected,)
@@ -401,6 +415,7 @@ def main() -> int:
     mcp.tool()(search_sessions)
     mcp.tool()(list_pi_sessions)
     mcp.tool()(search_pi_sessions)
+    mcp.tool()(search_all)
     mcp.run(transport="stdio")
     return 0
 

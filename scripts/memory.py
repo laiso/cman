@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from sanitize import strip_unsafe_terminal
 
 
 def claude_dir() -> Path:
@@ -14,7 +15,7 @@ def claude_projects_dir() -> Path:
     return Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir() / "projects"))
 
 
-def find_claude_md_files():
+def find_claude_md_files(cwd: str | Path | None = None):
     """Find all CLAUDE.md files at different scopes"""
     files = []
 
@@ -40,7 +41,7 @@ def find_claude_md_files():
             files.append(("user-rules", f))
 
     # Project-level (current directory)
-    cwd = Path.cwd()
+    cwd = Path(cwd) if cwd else Path.cwd()
     project_claude_md = cwd / "CLAUDE.md"
     if project_claude_md.exists():
         files.append(("project", project_claude_md))
@@ -129,7 +130,7 @@ def main():
         if len(files) == 1:
             file_path = files[0][1]
             with open(file_path, "r", encoding="utf-8") as f:
-                print(f.read())
+                print(strip_unsafe_terminal(f.read()))
         else:
             print("Multiple files found. Specify a pattern to select one:")
             for scope, f in files:
@@ -149,7 +150,7 @@ def main():
         preview = get_file_preview(file_path, args.lines)
         print(f"\n### {format_path(file_path)}")
         for line in preview.split("\n"):
-            print(f"  {line}")
+            print(f"  {strip_unsafe_terminal(line)}")
 
     print()
     print("Usage:")
