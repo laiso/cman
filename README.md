@@ -11,6 +11,18 @@ No external database, no API keys, no extra storage. cman gives Claude search ov
 /plugin install cman@cman
 ```
 
+For Pi Coding Agent, install the same checkout as a Pi package:
+
+```bash
+pi install . --local --approve
+```
+
+Or load the extension once without installing:
+
+```bash
+PI_OFFLINE=1 pi --no-extensions -e ./extensions/index.js --verbose --no-session
+```
+
 ## How it works
 
 Just ask Claude naturally:
@@ -154,6 +166,30 @@ python3 scripts/smoke.py
 ```
 
 `scripts/smoke.py` uses synthetic fixture data. It sets `CMAN_CLAUDE_DIR` to a temporary `.claude` directory and `CMAN_PI_SESSIONS_DIR` to a temporary Pi sessions directory so tests never read real local conversation logs.
+
+### Pi extension debugging
+
+Load only the working-tree extension:
+
+```bash
+PI_OFFLINE=1 pi --no-extensions -e ./extensions/index.js --verbose --no-session
+```
+
+Run a non-interactive synthetic-log check:
+
+```bash
+tmpdir=$(mktemp -d /tmp/cman-pi-ext.XXXXXX)
+mkdir -p "$tmpdir/sessions/--tmp-cman--"
+cat > "$tmpdir/sessions/--tmp-cman--/2026-06-26T00-00-00-000Z_test.jsonl" <<'JSONL'
+{"type":"session","version":3,"id":"pi-extension-test","timestamp":"2026-06-26T00:00:00.000Z","cwd":"/tmp/cman"}
+{"type":"message","id":"u1","parentId":null,"timestamp":"2026-06-26T00:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"cman extension synthetic pi log"}]}}
+JSONL
+
+CMAN_PI_SESSIONS_DIR="$tmpdir/sessions" PI_OFFLINE=1 \
+  pi --no-extensions -e ./extensions/index.js --verbose --no-session \
+  --tools cman_pi_sessions \
+  -p 'Use the cman_pi_sessions tool with query synthetic and limit 1. Output only the tool result.'
+```
 
 ## License
 
