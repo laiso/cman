@@ -17,6 +17,7 @@ from grep import search_session, search_memory_files, PROJECTS_DIR as GREP_PROJE
 from sessions import list_sessions as _list_sessions
 from plans import process_file as _process_plan_file, PROJECTS_DIR as PLANS_PROJECTS_DIR
 from memory import find_claude_md_files, get_file_preview, format_path
+from pi_sessions import list_pi_sessions as _list_pi_sessions, search_pi_session
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -269,12 +270,109 @@ def search_sessions(
     return "\n".join(lines)
 
 
+def list_pi_sessions(limit: int = 50, path: str | None = None) -> str:
+    """List recent Pi Coding Agent sessions with metadata and resume commands."""
+    session_dir = Path(path) if path else None
+
+    try:
+        sessions = _list_pi_sessions(session_dir, limit)
+    except FileNotFoundError as e:
+        if path is None:
+            return "No Pi sessions found"
+        return f"Error: {e}"
+
+    if not sessions:
+        return "No Pi sessions found"
+
+    home = _home()
+    lines = ["=== Pi Sessions ===", ""]
+
+    for i, s in enumerate(sessions, 1):
+        lines.append(f"[{i}] {s['title']}")
+        lines.append(f"    {s['relative_time']} · {s['size']}")
+        if s["cwd"]:
+            cwd = s["cwd"]
+            display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
+            needs_quote = "~" not in display_cwd
+            quoted_cwd = shlex.quote(display_cwd) if needs_quote else display_cwd
+            lines.append(
+                f"    cd {quoted_cwd} && pi --session {shlex.quote(str(s['file']))}"
+            )
+        else:
+            lines.append(f"    pi --session {shlex.quote(str(s['file']))}")
+        lines.append("")
+
+    if len(sessions) < limit:
+        lines.append(f"Total: {len(sessions)} sessions")
+
+    return "\n".join(lines)
+
+
+def search_pi_sessions(
+    keyword: str,
+    limit: int = 20,
+    max_matches: int = 3,
+    offset: int = 0,
+    path: str | None = None,
+) -> str:
+    """Full-text search across Pi Coding Agent session contents by keyword."""
+    session_dir = Path(path) if path else None
+    if session_dir is None:
+        from pi_sessions import pi_sessions_dir
+
+        session_dir = pi_sessions_dir()
+
+    if not session_dir.exists():
+        if path is None:
+            return f'No Pi sessions found matching "{keyword}"'
+        return f"Error: {session_dir} not found"
+
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(search_pi_session, f, keyword, max_matches): f
+            for f in session_dir.rglob("*.jsonl")
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+
+    results.sort(key=lambda x: (x["score"], x["mtime"]), reverse=True)
+    safe_offset = max(0, offset)
+    results = results[safe_offset : safe_offset + limit]
+
+    if not results:
+        return f'No Pi sessions found matching "{keyword}"'
+
+    lines = [f'=== Pi Sessions matching "{keyword}" ===', ""]
+    for i, result in enumerate(results, 1):
+        cwd_display = format_path(Path(result["cwd"])) if result["cwd"] else "unknown"
+        lines.append(f"[{i}] {cwd_display}")
+        if result["cwd"]:
+            needs_quote = "~" not in cwd_display
+            quoted_cwd = shlex.quote(cwd_display) if needs_quote else cwd_display
+            lines.append(
+                f"    cd {quoted_cwd} && pi --session {shlex.quote(str(result['file']))}"
+            )
+        else:
+            lines.append(f"    pi --session {shlex.quote(str(result['file']))}")
+        for role, snippet in result["matches"]:
+            prefix = "❯" if role == "user" else " "
+            lines.append(f"    {prefix} {snippet}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def run_smoke() -> int:
     checks = [
         ("sessions", list_sessions(limit=5, exclude_subagents=True), "Claude Sessions"),
         ("plans", list_plans(), ("Claude Code Plans", "No plans found")),
         ("memory", list_memory(), "Claude Memory Files"),
         ("search", search_sessions("cman", limit=5), "matching"),
+        ("pi sessions", list_pi_sessions(limit=5), ("Pi Sessions", "No Pi sessions found")),
+        ("pi search", search_pi_sessions("cman", limit=5), ("Pi Sessions matching", "No Pi sessions found")),
     ]
     for name, output, expected in checks:
         expected_values = expected if isinstance(expected, tuple) else (expected,)
@@ -301,6 +399,8 @@ def main() -> int:
     mcp.tool()(list_plans)
     mcp.tool()(list_memory)
     mcp.tool()(search_sessions)
+    mcp.tool()(list_pi_sessions)
+    mcp.tool()(search_pi_sessions)
     mcp.run(transport="stdio")
     return 0
 

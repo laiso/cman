@@ -1,8 +1,8 @@
-# cman — Agentic Memory for Claude Code
+# cman — Agentic Memory for Coding Agents
 
 Your memory is already there. cman just searches it agentically.
 
-No external database, no API keys, no extra storage. cman gives Claude search over your existing sessions, plans, and memory files — and lets it summarize what matters.
+No external database, no API keys, no extra storage. cman gives Claude search over your existing Claude Code sessions, plans, and memory files — and can also inspect Pi Coding Agent sessions.
 
 ## Installation
 
@@ -125,25 +125,35 @@ Memory Overview
 ## Architecture
 
 ```
-Natural language          Skills (UX)              MCP Server            Scripts (data)
-                    ┌─────────────────┐      ┌──────────────────┐  ┌────────────────┐
-"What did I do      │ remember        │─────▶│ list_sessions    │──│ sessions.py    │
- yesterday?"     ──▶│ (auto-trigger)  │─────▶│ list_plans       │──│ plans.py       │
-                    ├─────────────────┤─────▶│ list_memory      │──│ memory.py      │
-/cm-status       ──▶│ cm-status       │─────▶│ search_sessions  │──│ grep.py        │
-/remember …      ──▶│ remember        │─────▶│ (same pipeline)  │──│ (same)         │
-                    └─────────────────┘      └──────────────────┘  └────────────────┘
+Natural language          Skills (UX)              MCP Server               Scripts (data)
+                    ┌─────────────────┐      ┌─────────────────────┐  ┌────────────────┐
+"What did I do      │ remember        │─────▶│ list_sessions       │──│ sessions.py    │
+ yesterday?"     ──▶│ (auto-trigger)  │─────▶│ list_plans          │──│ plans.py       │
+                    ├─────────────────┤─────▶│ list_memory         │──│ memory.py      │
+/cm-status       ──▶│ cm-status       │─────▶│ search_sessions     │──│ grep.py        │
+/remember …      ──▶│ remember        │─────▶│ list_pi_sessions    │──│ pi_sessions.py │
+                    │                 │─────▶│ search_pi_sessions  │──│ pi_sessions.py │
+                    └─────────────────┘      └─────────────────────┘  └────────────────┘
                     (workflow text: skills/cm-search/SKILL.md; cm-search skill deprecated)
 ```
 
-Skills call MCP tools served by `server.py` (stdio transport, launched via `uv run --script`). The MCP server reuses logic from the Python scripts, which read `~/.claude/projects/**/*.jsonl` and memory files directly. Claude interprets, filters, and summarizes the output.
+Skills call MCP tools served by `server.py` (stdio transport, launched via `uv run --script`). The MCP server reuses logic from the Python scripts, which read `~/.claude/projects/**/*.jsonl`, memory files, and Pi sessions directly. Claude interprets, filters, and summarizes the output.
+
+Pi Coding Agent support reads JSONL sessions from `~/.pi/agent/sessions/**/*.jsonl` through separate MCP tools (`list_pi_sessions`, `search_pi_sessions`) and `scripts/pi_sessions.py`.
 
 ## Development
 
 ```bash
 # Local testing
 claude --plugin-dir /path/to/cman
+
+# CI-equivalent local checks
+python3 -m py_compile server.py scripts/*.py
+uv run --with pytest python -m pytest
+python3 scripts/smoke.py
 ```
+
+`scripts/smoke.py` uses synthetic fixture data. It sets `CMAN_CLAUDE_DIR` to a temporary `.claude` directory and `CMAN_PI_SESSIONS_DIR` to a temporary Pi sessions directory so tests never read real local conversation logs.
 
 ## License
 
