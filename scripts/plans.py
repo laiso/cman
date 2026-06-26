@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import shlex
 import sys
 from pathlib import Path
 
-PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+def claude_dir() -> Path:
+    return Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
+
+
+PROJECTS_DIR = Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir() / "projects"))
 
 
 def process_file(file_path, plans_dir):
@@ -55,18 +61,18 @@ def main():
     if len(sys.argv) > 1:
         plans_dir = Path(sys.argv[1])
     else:
-        plans_dir = Path.home() / ".claude" / "plans"
+        plans_dir = Path(os.environ.get("CMAN_CLAUDE_PLANS_DIR", claude_dir() / "plans"))
 
     if not PROJECTS_DIR.exists():
         print(f"Error: {PROJECTS_DIR} not found", file=sys.stderr)
         return 1
 
-    if not plans_dir.exists():
-        print(f"Error: {plans_dir} not found", file=sys.stderr)
-        return 1
-
     print("=== Claude Code Plans ===")
     print()
+
+    if not plans_dir.exists():
+        print("No sessions found")
+        return 0
 
     jsonl_files = list(PROJECTS_DIR.rglob("*.jsonl"))
 

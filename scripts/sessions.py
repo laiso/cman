@@ -2,11 +2,17 @@
 
 import argparse
 import json
+import os
 import shlex
 import sys
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def claude_projects_dir() -> Path:
+    claude_dir = Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
+    return Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir / "projects"))
 
 
 def get_relative_time(mtime: float) -> str:
@@ -88,7 +94,7 @@ def process_session(f: Path) -> dict:
 
 def list_sessions(project_dir: Path = None, limit: int = 50, exclude_subagents: bool = False):
     if project_dir is None:
-        project_dir = Path.home() / ".claude" / "projects"
+        project_dir = claude_projects_dir()
 
     if not project_dir.exists():
         raise FileNotFoundError(f"Projects directory not found: {project_dir}")

@@ -2,11 +2,16 @@
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-PROJECTS_DIR = Path.home() / ".claude" / "projects"
+def claude_dir() -> Path:
+    return Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
+
+
+PROJECTS_DIR = Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir() / "projects"))
 
 # Relevance weights by message role
 _ROLE_WEIGHT = {"user": 3, "summary": 3, "assistant": 1, "system": 1}

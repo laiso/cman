@@ -5,14 +5,13 @@
 """cman MCP server — exposes session/plan/memory tools for Claude Code."""
 
 import io
+import argparse
 import shlex
 import sys
 from pathlib import Path
 
 # Allow importing from scripts/
 sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-
-from mcp.server.fastmcp import FastMCP
 
 from grep import search_session, search_memory_files, PROJECTS_DIR as GREP_PROJECTS_DIR
 from sessions import list_sessions as _list_sessions
@@ -21,14 +20,11 @@ from memory import find_claude_md_files, get_file_preview, format_path
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-mcp = FastMCP("cman")
-
 
 def _home() -> str:
     return str(Path.home())
 
 
-@mcp.tool()
 def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | None = None) -> str:
     """List recent Claude Code sessions with metadata including title, time, size, and resume commands."""
     project_dir = Path(path) if path else None
@@ -59,7 +55,6 @@ def list_sessions(limit: int = 50, exclude_subagents: bool = False, path: str | 
     return "\n".join(lines)
 
 
-@mcp.tool()
 def list_plans(plans_dir: str | None = None) -> str:
     """List Claude Code plans with linked sessions and resume commands."""
     pd = Path(plans_dir) if plans_dir else Path.home() / ".claude" / "plans"
@@ -67,7 +62,7 @@ def list_plans(plans_dir: str | None = None) -> str:
     if not PLANS_PROJECTS_DIR.exists():
         return f"Error: {PLANS_PROJECTS_DIR} not found"
     if not pd.exists():
-        return f"Error: {pd} not found"
+        return "No plans found"
 
     jsonl_files = list(PLANS_PROJECTS_DIR.rglob("*.jsonl"))
 
@@ -115,7 +110,6 @@ def list_plans(plans_dir: str | None = None) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, cwd: str | None = None) -> str:
     """Discover and preview Claude memory files across all scopes (managed, user, project, auto-memory)."""
     import os
@@ -174,7 +168,6 @@ def list_memory(pattern: str | None = None, cat: bool = False, lines: int = 5, c
     return "\n".join(out)
 
 
-@mcp.tool()
 def search_sessions(
     keyword: str,
     limit: int = 20,
@@ -276,5 +269,41 @@ def search_sessions(
     return "\n".join(lines)
 
 
-if __name__ == "__main__":
+def run_smoke() -> int:
+    checks = [
+        ("sessions", list_sessions(limit=5, exclude_subagents=True), "Claude Sessions"),
+        ("plans", list_plans(), ("Claude Code Plans", "No plans found")),
+        ("memory", list_memory(), "Claude Memory Files"),
+        ("search", search_sessions("cman", limit=5), "matching"),
+    ]
+    for name, output, expected in checks:
+        expected_values = expected if isinstance(expected, tuple) else (expected,)
+        if not any(value in output for value in expected_values):
+            print(f"{name}: expected one of {expected_values!r}", file=sys.stderr)
+            print(output, file=sys.stderr)
+            return 1
+        print(f"ok mcp {name}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run cman MCP server")
+    parser.add_argument("--smoke", action="store_true", help="Run server tool smoke checks")
+    args = parser.parse_args()
+
+    if args.smoke:
+        return run_smoke()
+
+    from mcp.server.fastmcp import FastMCP
+
+    mcp = FastMCP("cman")
+    mcp.tool()(list_sessions)
+    mcp.tool()(list_plans)
+    mcp.tool()(list_memory)
+    mcp.tool()(search_sessions)
     mcp.run(transport="stdio")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

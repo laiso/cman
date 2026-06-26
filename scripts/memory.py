@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+
+def claude_dir() -> Path:
+    return Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
+
+
+def claude_projects_dir() -> Path:
+    return Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir() / "projects"))
 
 
 def find_claude_md_files():
@@ -20,12 +29,12 @@ def find_claude_md_files():
             files.append(("managed", p))
 
     # User-level
-    user_claude_md = Path.home() / ".claude" / "CLAUDE.md"
+    user_claude_md = claude_dir() / "CLAUDE.md"
     if user_claude_md.exists():
         files.append(("user", user_claude_md))
 
     # User rules
-    user_rules_dir = Path.home() / ".claude" / "rules"
+    user_rules_dir = claude_dir() / "rules"
     if user_rules_dir.exists():
         for f in user_rules_dir.rglob("*.md"):
             files.append(("user-rules", f))
@@ -47,7 +56,7 @@ def find_claude_md_files():
             files.append(("project-rules", f))
 
     # Auto memory
-    memory_dir = Path.home() / ".claude" / "projects"
+    memory_dir = claude_projects_dir()
     if memory_dir.exists():
         for proj_dir in sorted(
             memory_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
