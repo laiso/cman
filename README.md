@@ -17,7 +17,7 @@ Claude Code:
 Pi Coding Agent:
 
 ```bash
-pi install . --local --approve
+pi install git:https://github.com/laiso/cman.git --approve
 ```
 
 ## Use
