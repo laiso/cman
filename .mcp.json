@@ -1,6 +1,8 @@
 {
-  "cman": {
-    "command": "uv",
-    "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/server.py"]
+  "mcpServers": {
+    "cman": {
+      "command": "uv",
+      "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/server.py"]
+    }
   }
 }

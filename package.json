@@ -1,0 +1,21 @@
+{
+  "name": "cman-pi",
+  "version": "1.5.0",
+  "description": "Agentic memory for coding-agent sessions, plans, and memory",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./pi/extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

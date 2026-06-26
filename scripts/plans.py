@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import shlex
+from sanitize import shell_cd_command, resume_command, strip_unsafe_terminal
+from scan import iter_jsonl_files
+from path_guard import ensure_allowed_path
 import sys
 from pathlib import Path
 
-PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+def claude_dir() -> Path:
+    return Path(os.environ.get("CMAN_CLAUDE_DIR", Path.home() / ".claude"))
+
+
+PROJECTS_DIR = Path(os.environ.get("CMAN_CLAUDE_PROJECTS_DIR", claude_dir() / "projects"))
 
 
 def process_file(file_path, plans_dir):
@@ -41,7 +50,7 @@ def process_file(file_path, plans_dir):
 
     try:
         with open(plan_file, "r", encoding="utf-8") as f:
-            title = f.readline().strip().lstrip("#").strip()
+            title = strip_unsafe_terminal(f.readline().strip().lstrip("#").strip())
     except Exception as e:
         print(f"Warning: Failed to read {plan_file}: {e}", file=sys.stderr)
         return None
@@ -52,23 +61,24 @@ def process_file(file_path, plans_dir):
 
 
 def main():
+    default_plans_dir = Path(os.environ.get("CMAN_CLAUDE_PLANS_DIR", claude_dir() / "plans"))
     if len(sys.argv) > 1:
-        plans_dir = Path(sys.argv[1])
+        plans_dir = ensure_allowed_path(sys.argv[1], [default_plans_dir], "plans_dir")
     else:
-        plans_dir = Path.home() / ".claude" / "plans"
+        plans_dir = default_plans_dir
 
     if not PROJECTS_DIR.exists():
         print(f"Error: {PROJECTS_DIR} not found", file=sys.stderr)
         return 1
 
-    if not plans_dir.exists():
-        print(f"Error: {plans_dir} not found", file=sys.stderr)
-        return 1
-
     print("=== Claude Code Plans ===")
     print()
 
-    jsonl_files = list(PROJECTS_DIR.rglob("*.jsonl"))
+    if not plans_dir.exists():
+        print("No sessions found")
+        return 0
+
+    jsonl_files = list(iter_jsonl_files(PROJECTS_DIR))
 
     results = []
     for f in jsonl_files:
@@ -93,21 +103,12 @@ def main():
     home = str(Path.home())
     for i, (slug, (title, plan_file_path, sessions)) in enumerate(sorted_results, 1):
         print(f"[{i}] {title}")
-        display_path = (
-            plan_file_path.replace(home, "~", 1)
-            if plan_file_path.startswith(home)
-            else plan_file_path
-        )
-        print(f"    open {display_path}")
+        print(f"    open {shlex.quote(strip_unsafe_terminal(plan_file_path))}")
         for session_id, cwd, _ in sessions:
             if cwd:
-                display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-                needs_quote = "~" not in display_cwd
-                print(
-                    f"    cd {shlex.quote(display_cwd) if needs_quote else display_cwd} && claude --resume {session_id}"
-                )
+                print(f"    {shell_cd_command(cwd, 'claude', '--resume', session_id)}")
             else:
-                print(f"    claude --resume {session_id}")
+                print(f"    {resume_command('claude', '--resume', session_id)}")
         print()
 
     return 0
