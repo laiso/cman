@@ -1,0 +1,36 @@
+{
+  "name": "cman",
+  "version": "1.5.0",
+  "description": "Search and summarize local coding-agent session history.",
+  "author": {
+    "name": "laiso",
+    "url": "https://github.com/laiso"
+  },
+  "homepage": "https://github.com/laiso/cman",
+  "repository": "https://github.com/laiso/cman",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "sessions",
+    "codex",
+    "claude",
+    "pi"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "interface": {
+    "displayName": "cman",
+    "shortDescription": "Search local coding-agent history",
+    "longDescription": "Recall past work across Codex, Claude Code, Pi, and memory files without an external database.",
+    "developerName": "laiso",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://github.com/laiso/cman",
+    "defaultPrompt": [
+      "$remember what did I work on yesterday?",
+      "$remember cman updates"
+    ]
+  }
+}

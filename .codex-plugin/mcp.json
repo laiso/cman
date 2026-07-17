@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cman": {
+      "command": "uv",
+      "args": ["run", "--script", "./server.py"],
+      "cwd": "."
+    }
+  }
+}

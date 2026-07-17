@@ -25,9 +25,17 @@ def _tokenize_query(keyword):
     return [t.lower() for t in keyword.split() if t]
 
 
+def _token_forms(token):
+    """Return conservative English inflection variants for a query token."""
+    forms = [token]
+    if len(token) > 4 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        forms.append(token[:-1])
+    return forms
+
+
 def _all_tokens_match(tokens, text_lower):
     """Return True when every token appears somewhere in *text_lower*."""
-    return all(t in text_lower for t in tokens)
+    return all(any(form in text_lower for form in _token_forms(token)) for token in tokens)
 
 
 def _collect_searchable_text(data):
@@ -97,11 +105,12 @@ def _extract_snippet(content, tokens, max_len=200, context=80):
     snippet_lower = snippet.lower()
     best_idx = len(snippet_lower)
     best_token_len = 0
-    for t in tokens:
-        idx = snippet_lower.find(t)
-        if idx != -1 and (idx < best_idx or (idx == best_idx and len(t) > best_token_len)):
-            best_idx = idx
-            best_token_len = len(t)
+    for token in tokens:
+        for form in _token_forms(token):
+            idx = snippet_lower.find(form)
+            if idx != -1 and (idx < best_idx or (idx == best_idx and len(form) > best_token_len)):
+                best_idx = idx
+                best_token_len = len(form)
     # Fallback: no token found — show the beginning of the text
     if best_idx >= len(snippet_lower):
         best_idx = 0
@@ -208,8 +217,8 @@ def main():
         return 1
 
     jsonl_files = list(iter_jsonl_files(project_dir))
-    if args.exclude_subagents:
-        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
+    # Sub-agent logs are implementation noise and are never user-facing memory.
+    jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:

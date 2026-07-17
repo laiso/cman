@@ -148,8 +148,8 @@ def list_sessions(
         raise FileNotFoundError(f"Projects directory not found: {project_dir}")
 
     jsonl_files = list(iter_jsonl_files(project_dir))
-    if exclude_subagents:
-        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
+    # Sub-agent logs are implementation noise and are never user-facing memory.
+    jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
     since_ts = parse_since(since)
     if since_ts is not None:
         jsonl_files = [f for f in jsonl_files if f.stat().st_mtime >= since_ts]

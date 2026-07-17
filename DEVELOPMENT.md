@@ -14,16 +14,24 @@ Natural language          Skills (UX)              MCP Server               Scri
 /cm-status       ──▶│ cm-status       │─────▶│ search_sessions     │──│ grep.py        │
 /remember …      ──▶│ remember        │─────▶│ list_pi_sessions    │──│ pi_sessions.py │
                     │                 │─────▶│ search_pi_sessions  │──│ pi_sessions.py │
+                    │                 │─────▶│ list_codex_sessions │──│ codex_sessions.py
+                    │                 │─────▶│ search_codex_sessions│─│ codex_sessions.py
                     │                 │─────▶│ search_all          │──│ search_all.py  │
                     └─────────────────┘      └─────────────────────┘  └────────────────┘
 ```
 
-Claude Code uses `server.py` as an MCP server over stdio. The server reuses the
-Python scripts that read Claude Code sessions, plans, memory files, and Pi
-sessions directly.
+Claude Code and Codex use `server.py` as an MCP server over stdio. The server
+reuses the Python scripts that read Claude Code sessions, plans, memory files,
+Pi sessions, and local Codex sessions directly.
 
 Pi Coding Agent uses the package extension in `pi/extensions/index.js`. The
 extension exposes native Pi tools and calls the same Python scripts.
+
+Codex loads `.codex-plugin/plugin.json`, which bundles the same skills and a
+Codex-specific `.codex-plugin/mcp.json` server configuration. Codex resolves the
+server `cwd` relative to the installed plugin root and does not expand
+`${CLAUDE_PLUGIN_ROOT}`, so it uses a relative `./server.py` launch, whereas the
+Claude Code `.mcp.json` uses `${CLAUDE_PLUGIN_ROOT}/server.py`.
 
 ## Local Development
 
@@ -60,15 +68,21 @@ python3 scripts/smoke.py
 node --check pi/extensions/index.js
 ```
 
+Run a local MCP protocol check against real logs:
+
+```bash
+uv run --with 'mcp>=1.0' python scripts/mcp_e2e.py 'cman updates'
+```
+
 Optional Pi E2E:
 
 ```bash
 python3 scripts/smoke.py --pi-e2e
 ```
 
-`scripts/smoke.py` uses synthetic fixture data. It sets `CMAN_CLAUDE_DIR` and
-`CMAN_PI_SESSIONS_DIR` to temporary directories so tests do not read real local
-conversation logs.
+`scripts/smoke.py` uses synthetic fixture data. It sets `CMAN_CLAUDE_DIR`,
+`CMAN_PI_SESSIONS_DIR`, and `CMAN_CODEX_SESSIONS_DIR` to temporary directories
+so tests do not read real local conversation logs.
 
 ## Pi Extension Debugging
 
