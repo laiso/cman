@@ -116,6 +116,18 @@ def test_search_session_single_keyword():
         assert result["score"] > 0
 
 
+def test_search_session_matches_conservative_plural_variant():
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _write_session(Path(tmp), "plural", [
+            {"type": "user", "message": {"content": "cman was updated today"}},
+        ])
+
+        result = search_session(p, "cman updates", 3)
+
+        assert result is not None
+        assert "updated" in result["matches"][0][1]
+
+
 def test_search_session_no_match():
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)

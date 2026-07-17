@@ -233,18 +233,18 @@ export default function (pi) {
   pi.registerTool({
     name: "cman_search_all",
     label: "cman Search All",
-    description: "Cross-search cman memory across Claude Code sessions, Pi sessions, and memory files.",
+    description: "Cross-search cman memory across Claude Code, Pi, Codex, and memory files.",
     promptSnippet: "Use cman_search_all to search past coding-agent work without asking which agent produced it.",
     promptGuidelines: [
       "Use this tool by default when the user asks what they did before, asks to remember something, or searches past work without naming a specific agent.",
-      "Do not ask the user whether to search Claude Code or Pi first; this tool searches both.",
-      "If the user names Claude Code or Pi, set source to that agent or use cman_claude_sessions / cman_pi_sessions for recent recaps.",
+      "Do not ask the user which coding agent to search first; this tool searches all supported sources.",
+      "If the user names Claude Code, Pi, or Codex, set source to that agent.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Search keyword or multi-word query" }),
       limit: Type.Optional(Type.Number({ description: "Maximum results to return. Default: 10." })),
       includeMemory: Type.Optional(Type.Boolean({ description: "Include Claude memory files. Default: true." })),
-      source: Type.Optional(Type.String({ description: "Restrict source: all, claude, pi, or memory. Default: all." })),
+      source: Type.Optional(Type.String({ description: "Restrict source: all, claude, pi, codex, or memory. Default: all." })),
       claudePath: Type.Optional(Type.String({ description: "Optional Claude projects directory override." })),
       piPath: Type.Optional(Type.String({ description: "Optional Pi sessions directory override." })),
     }),

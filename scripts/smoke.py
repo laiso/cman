@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def write_fixture(base_dir: Path) -> tuple[Path, Path]:
+def write_fixture(base_dir: Path) -> tuple[Path, Path, Path]:
     claude_dir = base_dir / ".claude"
     project_dir = claude_dir / "projects" / "-private-tmp-cman-e2e-project"
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +103,62 @@ def write_fixture(base_dir: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
 
-    return claude_dir, pi_sessions_dir
+    codex_sessions_dir = base_dir / ".codex" / "sessions"
+    codex_sessions_dir.mkdir(parents=True, exist_ok=True)
+    codex_rows = [
+        {
+            "type": "session_meta",
+            "payload": {
+                "id": "codex-smoke-id",
+                "cwd": "/private/tmp/cman-e2e-project",
+                "source": "cli",
+            },
+        },
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Investigate Codex cman updates"}],
+            },
+        },
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Confirmed Codex cman smoke memory"}],
+            },
+        },
+    ]
+    (codex_sessions_dir / "codex-smoke.jsonl").write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in codex_rows) + "\n",
+        encoding="utf-8",
+    )
+    codex_subagent_rows = [
+        {
+            "type": "session_meta",
+            "payload": {
+                "id": "codex-subagent-id",
+                "cwd": "/private/tmp/cman-e2e-project",
+                "source": {"subagent": "review"},
+            },
+        },
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "cman forbidden-subagent-marker"}],
+            },
+        },
+    ]
+    (codex_sessions_dir / "codex-subagent.jsonl").write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in codex_subagent_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    return claude_dir, pi_sessions_dir, codex_sessions_dir
 
 
 def run_command(args, env, cwd=ROOT):
@@ -130,10 +185,11 @@ def assert_contains(name: str, output: str, expected: str):
         raise SystemExit(1)
 
 
-def run_script_smoke(claude_dir: Path, pi_sessions_dir: Path):
+def run_script_smoke(claude_dir: Path, pi_sessions_dir: Path, codex_sessions_dir: Path):
     env = os.environ.copy()
     env["CMAN_CLAUDE_DIR"] = str(claude_dir)
     env["CMAN_PI_SESSIONS_DIR"] = str(pi_sessions_dir)
+    env["CMAN_CODEX_SESSIONS_DIR"] = str(codex_sessions_dir)
 
     checks = [
         (
@@ -152,6 +208,8 @@ def run_script_smoke(claude_dir: Path, pi_sessions_dir: Path):
         ("pi sessions", ["python3", "scripts/pi_sessions.py", "-n", "5"], "Investigate Pi cman smoke test"),
         ("pi sessions since", ["python3", "scripts/pi_sessions.py", "-n", "5", "--since", "2026-06-26"], "Investigate Pi cman smoke test"),
         ("pi grep", ["python3", "scripts/pi_sessions.py", "Pi cman", "-n", "5"], "Confirmed"),
+        ("codex sessions", ["python3", "scripts/codex_sessions.py", "-n", "5"], "Investigate Codex cman updates"),
+        ("codex grep", ["python3", "scripts/codex_sessions.py", "cman updates", "-n", "5"], "codex resume codex-smoke-id"),
         ("cross search", ["python3", "scripts/search_all.py", "cman", "-n", "10"], "Cross-agent memory matching"),
         ("server", ["python3", "server.py", "--smoke"], "ok mcp sessions"),
     ]
@@ -162,7 +220,7 @@ def run_script_smoke(claude_dir: Path, pi_sessions_dir: Path):
         print(f"ok {name}")
 
 
-def run_missing_plans_regression(claude_dir: Path, pi_sessions_dir: Path):
+def run_missing_plans_regression(claude_dir: Path, pi_sessions_dir: Path, codex_sessions_dir: Path):
     plans_dir = claude_dir / "plans"
     if plans_dir.exists():
         shutil.rmtree(plans_dir)
@@ -170,6 +228,7 @@ def run_missing_plans_regression(claude_dir: Path, pi_sessions_dir: Path):
     env = os.environ.copy()
     env["CMAN_CLAUDE_DIR"] = str(claude_dir)
     env["CMAN_PI_SESSIONS_DIR"] = str(pi_sessions_dir)
+    env["CMAN_CODEX_SESSIONS_DIR"] = str(codex_sessions_dir)
     output = run_command(["python3", "scripts/plans.py"], env)
     assert_contains("missing plans script", output, "No sessions found")
 
@@ -199,12 +258,14 @@ def run_skill_mcp_smoke():
         "search_sessions",
         "list_pi_sessions",
         "search_pi_sessions",
+        "list_codex_sessions",
+        "search_codex_sessions",
         "search_all",
     ):
         assert_contains("remember tools", remember_text, tool_name)
 
     status_text = (ROOT / "skills" / "cm-status" / "SKILL.md").read_text(encoding="utf-8")
-    for tool_name in ("list_sessions", "list_plans", "list_memory", "list_pi_sessions"):
+    for tool_name in ("list_sessions", "list_plans", "list_memory", "list_pi_sessions", "list_codex_sessions"):
         assert_contains("cm-status tools", status_text, tool_name)
 
     print("ok skill mcp declarations")
@@ -238,7 +299,7 @@ def claude_logged_in() -> bool:
     return bool(status.get("loggedIn"))
 
 
-def run_claude_e2e(claude_dir: Path, pi_sessions_dir: Path):
+def run_claude_e2e(claude_dir: Path, pi_sessions_dir: Path, codex_sessions_dir: Path):
     if not shutil.which("claude"):
         print("claude command not found", file=sys.stderr)
         raise SystemExit(1)
@@ -253,6 +314,7 @@ def run_claude_e2e(claude_dir: Path, pi_sessions_dir: Path):
     env = os.environ.copy()
     env["CMAN_CLAUDE_DIR"] = str(claude_dir)
     env["CMAN_PI_SESSIONS_DIR"] = str(pi_sessions_dir)
+    env["CMAN_CODEX_SESSIONS_DIR"] = str(codex_sessions_dir)
     base_command = [
         "claude",
         "--plugin-dir",
@@ -385,14 +447,14 @@ def main():
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="cman-smoke-") as tmp:
-        claude_dir, pi_sessions_dir = write_fixture(Path(tmp))
-        run_script_smoke(claude_dir, pi_sessions_dir)
+        claude_dir, pi_sessions_dir, codex_sessions_dir = write_fixture(Path(tmp))
+        run_script_smoke(claude_dir, pi_sessions_dir, codex_sessions_dir)
         run_skill_mcp_smoke()
-        run_missing_plans_regression(claude_dir, pi_sessions_dir)
+        run_missing_plans_regression(claude_dir, pi_sessions_dir, codex_sessions_dir)
         run_plugin_validation()
 
         if args.claude_e2e:
-            run_claude_e2e(claude_dir, pi_sessions_dir)
+            run_claude_e2e(claude_dir, pi_sessions_dir, codex_sessions_dir)
         if args.pi_e2e:
             run_pi_e2e()
 

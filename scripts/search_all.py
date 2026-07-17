@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Cross-search Claude Code sessions, Pi sessions, and memory files."""
+"""Cross-search Claude Code, Pi, Codex, and memory files."""
 
 import argparse
 import os
@@ -14,6 +14,7 @@ from memory import find_claude_md_files, format_path
 from pi_sessions import pi_sessions_dir, search_pi_session
 from pi_sessions import _display_path as _display_pi_path
 from pi_sessions import _sanitize_text
+from codex_sessions import codex_session_dirs, iter_codex_session_files, search_codex_session
 from sanitize import display_path as _safe_display_path
 from sanitize import shell_cd_command, resume_command, strip_unsafe_terminal
 from scan import iter_jsonl_files
@@ -47,6 +48,7 @@ def _search_claude(keyword: str, max_matches: int, path: Path | None):
         futures = {
             executor.submit(search_session, file_path, keyword, max_matches): file_path
             for file_path in iter_jsonl_files(project_dir)
+            if not file_path.stem.startswith("agent-")
         }
         for future in as_completed(futures):
             result = future.result()
@@ -71,6 +73,20 @@ def _search_pi(keyword: str, max_matches: int, path: Path | None):
             result = future.result()
             if result:
                 result["source"] = "pi"
+                results.append(result)
+    return results
+
+
+def _search_codex(keyword: str, max_matches: int, path: Path | None):
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(search_codex_session, file_path, keyword, max_matches): file_path
+            for file_path in iter_codex_session_files(path)
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
                 results.append(result)
     return results
 
@@ -108,6 +124,13 @@ def _format_result(index: int, result: dict) -> list[str]:
             lines.append(f"    {shell_cd_command(result['cwd'], 'pi', '--session', result['session_id'])}")
         else:
             lines.append(f"    {resume_command('pi', '--session', result['session_id'])}")
+    elif source == "codex":
+        cwd_display = _display_path(result.get("cwd"))
+        lines.append(f"[{index}] Codex {cwd_display}")
+        if result.get("cwd"):
+            lines.append(f"    {shell_cd_command(result['cwd'], 'codex', 'resume', result['session_id'])}")
+        else:
+            lines.append(f"    {resume_command('codex', 'resume', result['session_id'])}")
     else:
         display_path = _display_path(result["path"])
         lines.append(f"[{index}] Memory {display_path}")
@@ -116,7 +139,7 @@ def _format_result(index: int, result: dict) -> list[str]:
         if source == "claude":
             prefix = "❯" if role == "user" else " "
             lines.append(f"    {prefix} {_sanitize_text(snippet)}")
-        elif source == "pi":
+        elif source in {"pi", "codex"}:
             prefix = "❯" if role == "user" else " "
             lines.append(f"    {prefix} {strip_unsafe_terminal(snippet)}")
         else:
@@ -132,9 +155,10 @@ def search_all(
     include_memory: bool = True,
     claude_path: str | None = None,
     pi_path: str | None = None,
+    codex_path: str | None = None,
     source: str = "all",
 ) -> str:
-    if source not in {"all", "claude", "pi", "memory"}:
+    if source not in {"all", "claude", "pi", "codex", "memory"}:
         raise ValueError(f"Unknown source: {source}")
 
     results = []
@@ -142,6 +166,8 @@ def search_all(
         results.extend(_search_claude(keyword, max_matches, Path(claude_path) if claude_path else None))
     if source in {"all", "pi"}:
         results.extend(_search_pi(keyword, max_matches, Path(pi_path) if pi_path else None))
+    if source in {"all", "codex"}:
+        results.extend(_search_codex(keyword, max_matches, Path(codex_path) if codex_path else None))
     if include_memory and source in {"all", "memory"}:
         results.extend(_search_memory(keyword))
 
@@ -167,9 +193,10 @@ def main() -> int:
     parser.add_argument("--no-memory", action="store_true", help="Skip Claude memory files")
     parser.add_argument("--claude-path", help="Override Claude projects directory")
     parser.add_argument("--pi-path", help="Override Pi sessions directory")
+    parser.add_argument("--codex-path", help="Override Codex sessions directory")
     parser.add_argument(
         "--source",
-        choices=("all", "claude", "pi", "memory"),
+        choices=("all", "claude", "pi", "codex", "memory"),
         default="all",
         help="Restrict search to one source. Default: all",
     )
@@ -182,6 +209,7 @@ def main() -> int:
         include_memory=not args.no_memory,
         claude_path=str(ensure_allowed_path(args.claude_path, [_claude_projects_dir()], "claude-path")) if args.claude_path else None,
         pi_path=str(ensure_allowed_path(args.pi_path, [pi_sessions_dir()], "pi-path")) if args.pi_path else None,
+        codex_path=str(ensure_allowed_path(args.codex_path, codex_session_dirs(), "codex-path")) if args.codex_path else None,
         source=args.source,
     ))
     return 0

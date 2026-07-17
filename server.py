@@ -2,7 +2,7 @@
 # dependencies = ["mcp>=1.0"]
 # ///
 
-"""cman MCP server — exposes session/plan/memory tools for Claude Code."""
+"""cman MCP server for Claude Code, Pi, and Codex session memory."""
 
 import io
 import argparse
@@ -19,6 +19,12 @@ from plans import process_file as _process_plan_file, PROJECTS_DIR as PLANS_PROJ
 from memory import find_claude_md_files, get_file_preview, format_path
 from pi_sessions import list_pi_sessions as _list_pi_sessions, search_pi_session
 from pi_sessions import _sanitize_text as _sanitize_pi_text
+from codex_sessions import (
+    codex_session_dirs,
+    iter_codex_session_files,
+    list_codex_sessions as _list_codex_sessions,
+    search_codex_session,
+)
 from search_all import search_all as _search_all
 from sanitize import display_path, shell_cd_command, resume_command, strip_unsafe_terminal
 from path_guard import ensure_allowed_path
@@ -43,7 +49,7 @@ def list_sessions(
     sessions = _list_sessions(
         project_dir,
         safe_limit,
-        exclude_subagents=exclude_subagents,
+        exclude_subagents=True,
         since=since,
     )
 
@@ -193,8 +199,7 @@ def search_sessions(
         return f"Error: {project_dir} not found"
 
     jsonl_files = list(iter_jsonl_files(project_dir))
-    if exclude_subagents:
-        jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
+    jsonl_files = [f for f in jsonl_files if not f.stem.startswith("agent-")]
 
     if include_history:
         history_file = Path.home() / ".claude" / "history.jsonl"
@@ -357,6 +362,71 @@ def search_pi_sessions(
     return "\n".join(lines)
 
 
+def list_codex_sessions(
+    limit: int = 50,
+    path: str | None = None,
+    since: str | None = None,
+) -> str:
+    """List recent local Codex sessions. Sub-agent sessions are always excluded."""
+    safe_limit = max(1, min(100, int(limit)))
+    session_path = ensure_allowed_path(path, codex_session_dirs(), "path") if path else None
+    sessions = _list_codex_sessions(session_path, safe_limit, since)
+    if not sessions:
+        return "No Codex sessions found"
+
+    lines = ["=== Codex Sessions ===", ""]
+    for index, session in enumerate(sessions, 1):
+        lines.append(f"[{index}] {strip_unsafe_terminal(session['title'])}")
+        lines.append(f"    {session['relative_time']} · {session['size']}")
+        cwd = session.get("cwd")
+        if cwd:
+            lines.append(f"    {shell_cd_command(cwd, 'codex', 'resume', session['session_id'])}")
+        else:
+            lines.append(f"    {resume_command('codex', 'resume', session['session_id'])}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def search_codex_sessions(
+    keyword: str,
+    limit: int = 20,
+    max_matches: int = 3,
+    offset: int = 0,
+    path: str | None = None,
+) -> str:
+    """Full-text search local Codex sessions. Sub-agent sessions are always excluded."""
+    safe_limit = max(1, min(100, int(limit)))
+    safe_matches = max(1, min(20, int(max_matches)))
+    session_path = ensure_allowed_path(path, codex_session_dirs(), "path") if path else None
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(search_codex_session, item, keyword, safe_matches)
+            for item in iter_codex_session_files(session_path)
+        ]
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+    results.sort(key=lambda item: (item["score"], item["mtime"]), reverse=True)
+    results = results[max(0, offset):][:safe_limit]
+    if not results:
+        return f'No Codex sessions found matching "{keyword}"'
+
+    lines = [f'=== Codex Sessions matching "{keyword}" ===', ""]
+    for index, result in enumerate(results, 1):
+        cwd = result.get("cwd")
+        lines.append(f"[{index}] {display_path(cwd) if cwd else 'unknown'}")
+        if cwd:
+            lines.append(f"    {shell_cd_command(cwd, 'codex', 'resume', result['session_id'])}")
+        else:
+            lines.append(f"    {resume_command('codex', 'resume', result['session_id'])}")
+        for role, snippet in result["matches"]:
+            lines.append(f"    {'❯' if role == 'user' else ' '} {strip_unsafe_terminal(snippet)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def search_all(
     keyword: str,
     limit: int = 20,
@@ -364,9 +434,10 @@ def search_all(
     include_memory: bool = True,
     claude_path: str | None = None,
     pi_path: str | None = None,
+    codex_path: str | None = None,
     source: str = "all",
 ) -> str:
-    """Cross-search Claude Code sessions, Pi sessions, and memory files."""
+    """Cross-search Claude Code, Pi, Codex, and memory files."""
     return _search_all(
         keyword,
         limit=max(1, min(100, int(limit))),
@@ -374,6 +445,7 @@ def search_all(
         include_memory=include_memory,
         claude_path=str(ensure_allowed_path(claude_path, [GREP_PROJECTS_DIR], "claude_path")) if claude_path else None,
         pi_path=str(ensure_allowed_path(pi_path, [__import__('pi_sessions').pi_sessions_dir()], "pi_path")) if pi_path else None,
+        codex_path=str(ensure_allowed_path(codex_path, codex_session_dirs(), "codex_path")) if codex_path else None,
         source=source,
     )
 
@@ -386,6 +458,8 @@ def run_smoke() -> int:
         ("search", search_sessions("cman", limit=5), "matching"),
         ("pi sessions", list_pi_sessions(limit=5), ("Pi Sessions", "No Pi sessions found")),
         ("pi search", search_pi_sessions("cman", limit=5), ("Pi Sessions matching", "No Pi sessions found")),
+        ("codex sessions", list_codex_sessions(limit=5), ("Codex Sessions", "No Codex sessions found")),
+        ("codex search", search_codex_sessions("cman", limit=5), ("Codex Sessions matching", "No Codex sessions found")),
         ("cross search", search_all("cman", limit=5), "Cross-agent memory matching"),
     ]
     for name, output, expected in checks:
@@ -415,6 +489,8 @@ def main() -> int:
     mcp.tool()(search_sessions)
     mcp.tool()(list_pi_sessions)
     mcp.tool()(search_pi_sessions)
+    mcp.tool()(list_codex_sessions)
+    mcp.tool()(search_codex_sessions)
     mcp.tool()(search_all)
     mcp.run(transport="stdio")
     return 0

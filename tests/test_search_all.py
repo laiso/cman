@@ -25,14 +25,22 @@ def test_search_all_crosses_claude_pi_and_memory_without_agent_selection(monkeyp
         claude_dir = home / ".claude"
         claude_project = claude_dir / "projects" / "-home-work-app"
         pi_sessions = home / ".pi" / "agent" / "sessions" / "--home-work-app--"
+        codex_sessions = home / ".codex" / "sessions"
 
         _write_jsonl(claude_project / "claude-session-id.jsonl", [
             {"type": "summary", "cwd": str(home / "work" / "app"), "summary": "cross memory claude summary"},
             {"type": "user", "message": {"content": "Investigate cross memory in Claude"}},
         ])
+        _write_jsonl(claude_project / "agent-subagent-id.jsonl", [
+            {"type": "user", "message": {"content": "cross memory forbidden-claude-subagent-marker"}},
+        ])
         _write_jsonl(pi_sessions / "2026-06-26T00-00-00Z_pi.jsonl", [
             {"type": "session", "id": "pi-session-id", "cwd": str(home / "work" / "app")},
             {"type": "message", "message": {"role": "user", "content": "Investigate cross memory in Pi"}},
+        ])
+        _write_jsonl(codex_sessions / "codex-session.jsonl", [
+            {"type": "session_meta", "payload": {"id": "codex-session-id", "cwd": str(home / "work" / "app"), "source": "cli"}},
+            {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Investigate cross memory in Codex"}]}},
         ])
 
         memory_dir = claude_project / "memory"
@@ -42,6 +50,7 @@ def test_search_all_crosses_claude_pi_and_memory_without_agent_selection(monkeyp
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("CMAN_CLAUDE_DIR", str(claude_dir))
         monkeypatch.setenv("CMAN_PI_SESSIONS_DIR", str(home / ".pi" / "agent" / "sessions"))
+        monkeypatch.setenv("CMAN_CODEX_SESSIONS_DIR", str(codex_sessions))
 
         output = search_all("cross memory", limit=10)
 
@@ -50,7 +59,10 @@ def test_search_all_crosses_claude_pi_and_memory_without_agent_selection(monkeyp
         assert "cd ~/work/app && claude --resume claude-session-id" in output
         assert "Pi ~/work/app" in output
         assert "cd ~/work/app && pi --session pi-session-id" in output
+        assert "Codex ~/work/app" in output
+        assert "cd ~/work/app && codex resume codex-session-id" in output
         assert "Memory ~/.claude/projects/-home-work-app/memory/MEMORY.md" in output
+        assert "forbidden-claude-subagent-marker" not in output
         assert str(home) not in output
 
 
@@ -117,3 +129,26 @@ def test_search_all_can_be_restricted_to_claude_source(monkeypatch):
         assert "Claude ~/work/app" in output
         assert "Pi ~/work/app" not in output
         assert "pi --session" not in output
+
+
+def test_search_all_can_be_restricted_to_codex_and_excludes_subagents(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    sessions = home / ".codex" / "sessions"
+    main_rows = [
+        {"type": "session_meta", "payload": {"id": "main", "cwd": str(home / "work" / "app"), "source": "cli"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "cman was updated"}]}},
+    ]
+    subagent_rows = [
+        {"type": "session_meta", "payload": {"id": "sub", "cwd": str(home / "work" / "app"), "source": {"subagent": "review"}}},
+        {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "cman updates only-subagent-marker"}]}},
+    ]
+    _write_jsonl(sessions / "main.jsonl", main_rows)
+    _write_jsonl(sessions / "sub.jsonl", subagent_rows)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CMAN_CODEX_SESSIONS_DIR", str(sessions))
+
+    output = search_all("cman updates", source="codex")
+
+    assert "=== Codex memory matching" in output
+    assert "codex resume main" in output
+    assert "only-subagent-marker" not in output
