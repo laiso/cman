@@ -1,6 +1,6 @@
 {
   "name": "cman",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Agentic memory — search and summarize coding-agent sessions, plans, and memory across projects",
   "author": {
     "name": "laiso"

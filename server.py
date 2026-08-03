@@ -1,5 +1,7 @@
 # /// script
-# dependencies = ["mcp>=1.0"]
+# dependencies = [
+#   "mcp>=1.0,<2",
+# ]
 # ///
 
 """cman MCP server for Claude Code, Pi, and Codex session memory."""
