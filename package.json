@@ -1,6 +1,6 @@
 {
   "name": "cman-pi",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Agentic memory for Claude Code, Pi, and Codex sessions",
   "keywords": [
     "pi-package"
