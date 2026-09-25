@@ -212,6 +212,7 @@ def run_script_smoke(claude_dir: Path, pi_sessions_dir: Path, codex_sessions_dir
         ("codex grep", ["python3", "scripts/codex_sessions.py", "cman updates", "-n", "5"], "codex resume codex-smoke-id"),
         ("cross search", ["python3", "scripts/search_all.py", "cman", "-n", "10"], "Cross-agent memory matching"),
         ("server", ["python3", "server.py", "--smoke"], "ok mcp sessions"),
+        ("mcp stdio", ["python3", "scripts/mcp_e2e.py", "cman updates", "--source", "codex", "-n", "5"], "codex resume codex-smoke-id"),
     ]
 
     for name, command, expected in checks:
@@ -251,6 +252,8 @@ def run_skill_mcp_smoke():
         assert_contains(str(skill_file), text, "mcp__cman__*")
 
     remember_text = (ROOT / "skills" / "remember" / "SKILL.md").read_text(encoding="utf-8")
+    assert_contains("remember CLI fallback", remember_text, "scripts/search_all.py")
+    assert_contains("remember CLI fallback", remember_text, "When the cman MCP tools are unavailable")
     for tool_name in (
         "list_sessions",
         "list_plans",

@@ -49,8 +49,7 @@ Codex, and memory files together. Sub-agent session logs are excluded.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/) for the Claude Code and Codex MCP server
-- Python 3 for the Pi extension scripts
+- Python 3 for the MCP server and Pi extension scripts
 
 For Pi, cman uses the first working interpreter from `CMAN_PYTHON`, `PYTHON`,
 `python3`, then `python`.
