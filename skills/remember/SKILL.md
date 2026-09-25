@@ -16,7 +16,17 @@ If `$ARGUMENTS` is non-empty (e.g. `/remember FOO BAR`), join the tokens into th
 
 ## Instructions
 
-First, gather data by calling these tools in parallel:
+### When the cman MCP tools are unavailable
+
+If the MCP tools are not exposed in the current environment, run the bundled Python CLI, using an absolute path to this installed skill's plugin root:
+
+```bash
+python3 <plugin-root>/scripts/search_all.py "<keyword>" -n 20
+```
+
+`<plugin-root>` is two directories above this `SKILL.md`. Resolve it from the skill file location, not the user's current working directory. Pass the keyword as one argument; use an argument array when available, or quote it safely for a shell. Use `--source claude`, `--source pi`, or `--source codex` only when the user explicitly limits the source. Run separate searches for alternate spellings when needed. For recent or date recaps, use the bundled `scripts/sessions.py`, `scripts/pi_sessions.py`, and `scripts/codex_sessions.py` CLIs from the same root. If Python or the scripts are unavailable, explain the specific missing dependency.
+
+When the MCP tools are available, first gather data by calling these tools in parallel:
 1. `mcp__plugin_cman_cman__list_sessions` with limit=200
 2. `mcp__plugin_cman_cman__list_plans`
 3. `mcp__plugin_cman_cman__list_memory`

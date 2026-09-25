@@ -31,7 +31,8 @@ Codex loads `.codex-plugin/plugin.json`, which bundles the same skills and a
 Codex-specific `.codex-plugin/mcp.json` server configuration. Codex resolves the
 server `cwd` relative to the installed plugin root and does not expand
 `${CLAUDE_PLUGIN_ROOT}`, so it uses a relative `./server.py` launch, whereas the
-Claude Code `.mcp.json` uses `${CLAUDE_PLUGIN_ROOT}/server.py`.
+Claude Code `.mcp.json` uses `${CLAUDE_PLUGIN_ROOT}/server.py`. Both launch with
+`python3`; the stdio MCP adapter uses only the Python standard library.
 
 ## Local Development
 
@@ -63,7 +64,7 @@ CMAN_PYTHON=python PI_OFFLINE=1 pi --no-extensions -e ./pi/extensions/index.js -
 
 ```bash
 python3 -m py_compile server.py scripts/*.py
-uv run --with pytest python -m pytest
+python3 -m pytest
 python3 scripts/smoke.py
 node --check pi/extensions/index.js
 ```
@@ -71,7 +72,7 @@ node --check pi/extensions/index.js
 Run a local MCP protocol check against real logs:
 
 ```bash
-uv run --with 'mcp>=1.0' python scripts/mcp_e2e.py 'cman updates'
+python3 scripts/mcp_e2e.py 'cman updates'
 ```
 
 Optional Pi E2E:

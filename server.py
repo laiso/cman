@@ -1,9 +1,3 @@
-# /// script
-# dependencies = [
-#   "mcp>=1.0,<2",
-# ]
-# ///
-
 """cman MCP server for Claude Code, Pi, and Codex session memory."""
 
 import io
@@ -482,19 +476,14 @@ def main() -> int:
     if args.smoke:
         return run_smoke()
 
-    from mcp.server.fastmcp import FastMCP
+    from stdio_mcp import serve
 
-    mcp = FastMCP("cman")
-    mcp.tool()(list_sessions)
-    mcp.tool()(list_plans)
-    mcp.tool()(list_memory)
-    mcp.tool()(search_sessions)
-    mcp.tool()(list_pi_sessions)
-    mcp.tool()(search_pi_sessions)
-    mcp.tool()(list_codex_sessions)
-    mcp.tool()(search_codex_sessions)
-    mcp.tool()(search_all)
-    mcp.run(transport="stdio")
+    functions = (
+        list_sessions, list_plans, list_memory, search_sessions,
+        list_pi_sessions, search_pi_sessions, list_codex_sessions,
+        search_codex_sessions, search_all,
+    )
+    serve({function.__name__: function for function in functions})
     return 0
 
 
